@@ -92,8 +92,10 @@ Before entering the draft interface, the user selects:
 
 **League Format** — one of:
 - Regular
-- Superflex
+- Regular-3WR
 - Double Flex
+
+Exact roster slot counts per format, and the Kicker/Defense on-off toggles, are defined as seeded data in `docs/data-model.md` — not hardcoded here, since they're expected to keep changing as the roster design is refined.
 
 **Auction Budget** — user selects or enters a total auction budget (e.g. $200).
 
@@ -156,6 +158,20 @@ Keep the following concerns separated, both conceptually and in code organizatio
 Business logic (auction math, roster assignment rules, budget calculations) must **not** be embedded directly inside UI components — it belongs in dedicated modules/services/hooks that UI components consume.
 
 Keep ESPN/Yahoo data ingestion isolated from the core application so it can be built, tested, and swapped in independently of the mock data layer.
+
+**Data model:** the full entity/relationship design (Position, ValuationSource, LeagueFormat, RosterPositionSlot, Player, PlayerValuation, and the frontend-only session state) lives in `docs/data-model.md`. Consult it before writing schema, migrations, or seed data — it also documents which roster/format decisions are finalized versus still open.
+
+## Session Isolation & State Persistence
+
+This is a personal tool without user accounts at MVP, but one user's session (or browser tab) must never affect another's. This is achieved structurally, not by adding session-scoping code:
+
+- `drafted` status, `favorited` status, roster assignments, and remaining budget are **never** written to the `Player` table or any other shared/server-side reference data. They exist only as client-side (React) state for the current browser session.
+- The Express backend must remain stateless with respect to draft progress. It should only ever serve read-only reference data (players, league formats, roster slot configs) and must not hold any in-memory global variable or cache representing "the current draft." No draft-related write ever reaches the server.
+- Because nothing session-specific is stored server-side, isolation between users/tabs/devices falls out of the architecture automatically — there is no shared mutable state to leak across sessions.
+
+**Optional enhancement:** to avoid losing an in-progress draft on an accidental page refresh, draft state (roster assignments, favorites, budget) can be persisted to the browser's `localStorage`. This keeps state local to that one browser/device — it does not touch the server and does not compromise session isolation, since `localStorage` is never shared across browsers or users. This is not required for MVP and can be added at any point without a backend change.
+
+When user accounts and saved builds are introduced (Post-MVP), this client-side state maps directly onto server-side, user-owned records (e.g. a `DraftBuild` scoped to a `User`) — no structural rework needed, just relocation.
 
 ## Development Rules
 
