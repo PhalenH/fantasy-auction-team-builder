@@ -84,7 +84,7 @@ Yahoo Average: $45
 Combined Average: $43.50
 ```
 
-The player list should support filtering by position, and should eventually support search.
+The player list should support filtering by position, and should eventually support search. It defaults to sorting by combined auction value in descending order (most expensive player first).
 
 ## League Setup
 
@@ -115,6 +115,10 @@ The application must prevent assigning a player when no appropriate roster posit
 
 A player must not be selectable for the roster multiple times.
 
+Assignment is fully automatic — there is no manual bid/price entry in MVP. The amount added to team spending is always the player's calculated combined auction value at the moment of assignment (a frozen snapshot; it does not change retroactively if valuations are updated later).
+
+A drafted player can be un-drafted (e.g. by clicking their name in the occupied roster slot). Un-drafting removes the roster assignment, frees the slot, subtracts the player's price from spent so remaining budget updates accordingly, and returns the player to the available pool in its original (non-drafted) state. This does not affect favorited status — favoriting and roster-drafted status remain independent flags per the Favorites section below.
+
 The UI should clearly visually distinguish:
 - Available players
 - Drafted/selected players
@@ -135,6 +139,8 @@ Budget: $200
 Spent: $117
 Remaining: $83
 ```
+
+Overspending is allowed, not blocked — a player selection is never prevented for exceeding the remaining budget. If total spending exceeds the budget, Remaining Budget simply displays as negative. Revisit this if stricter budget enforcement is wanted later.
 
 ## Favorites
 
@@ -160,6 +166,58 @@ Business logic (auction math, roster assignment rules, budget calculations) must
 Keep ESPN/Yahoo data ingestion isolated from the core application so it can be built, tested, and swapped in independently of the mock data layer.
 
 **Data model:** the full entity/relationship design (Position, ValuationSource, LeagueFormat, RosterPositionSlot, Player, PlayerValuation, and the frontend-only session state) lives in `docs/data-model.md`. Consult it before writing schema, migrations, or seed data — it also documents which roster/format decisions are finalized versus still open.
+
+## Frontend Structure
+
+Development starts with the frontend, built entirely against mock data — no Express or Postgres required yet. `src/` should follow this layout:
+
+```
+src/
+├── components/
+│   ├── PlayerList/
+│   ├── PlayerCard/
+│   ├── PlayerFilters/
+│   ├── FavoritesList/
+│   ├── Roster/
+│   ├── RosterSlot/
+│   ├── BudgetDisplay/
+│   └── LeagueSelector/
+│
+├── pages/
+│   ├── Setup/
+│   └── Draft/
+│
+├── hooks/
+│   ├── useDraftSession.ts
+│   ├── useRoster.ts
+│   └── useFavorites.ts
+│
+├── data/
+│   ├── mockPlayers.ts
+│   └── leagueFormats.ts
+│
+├── types/
+│   ├── Player.ts
+│   ├── League.ts
+│   └── Roster.ts
+│
+├── services/
+│   ├── playerService.ts
+│   └── leagueService.ts
+│
+└── utils/
+    ├── auctionCalculations.ts
+    ├── budgetCalculations.ts
+    └── rosterAssignment.ts
+```
+
+Notes on intent, not just layout:
+
+- **`services/`** is the seam between mock data and a real backend. `playerService.ts` / `leagueService.ts` expose the function signatures a component calls (`getPlayers()`, `getLeagueFormats()`); today they return the mock arrays, later they call the Express API. No component should import `data/` files directly — always go through `services/`, so swapping the data source later touches only these two files.
+- **`utils/`** holds the three business-logic categories called out under Architecture Principles — auction math, roster assignment rules, budget calculations — as separate, independently testable modules rather than one catch-all file.
+- **`hooks/`** is the client-side home for the session state described under Session Isolation & State Persistence (draft session config, roster assignments, favorites). Components read/write this state through hooks, not local component state, since multiple components share it.
+- **`data/leagueFormats.ts`** holds roster/format config as data (mirroring `docs/data-model.md`'s `LeagueFormat`/`RosterPositionSlot` shape), consistent with the rule that roster configuration must never be hardcoded — that applies even before Postgres exists.
+- A router is not required for two pages (Setup, Draft); prefer simple state-driven conditional rendering unless a real need for URL-based navigation emerges, per "do not introduce unnecessary dependencies."
 
 ## Session Isolation & State Persistence
 

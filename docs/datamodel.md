@@ -66,7 +66,7 @@ Combined/calculated value is **not** a stored column — it's derived by a servi
 - `defense_enabled: boolean` — **new**, set at league-setup time, same tier/lifecycle as the budget input
 - `kicker_enabled: boolean` — **new**, same as above
 
-**RosterAssignment** (frontend list): `{ slot_instance_id, player_id, price_paid }` — determines "drafted" status by membership.
+**RosterAssignment** (frontend list): `{ slot_instance_id, player_id, price_paid }` — determines "drafted" status by membership. `price_paid` is set automatically to the player's calculated combined auction value at the moment of assignment (a frozen snapshot) — there is no manual bid-entry UI in MVP, and the value never changes retroactively if the underlying `PlayerValuation` rows are updated later.
 
 **Favorites**: a frontend id-set — determines "favorited" status by membership.
 
@@ -116,6 +116,10 @@ Treated as a UI-layer concern (constants), not modeled data — unlike roster fo
 
 Real ingestion just needs to write into the same `PlayerValuation` table the seed script writes into, matched to existing `Player` rows via `espn_player_id`/`yahoo_player_id` (or created if new). Because ingestion and mock-seeding both terminate at the identical table shape, replacing one with the other is a data-source swap, not a structural one.
 
+## Budget enforcement
+
+Overspending is **allowed, not blocked**. `validateAssignment` (utils/rosterAssignment.ts) only checks slot eligibility/capacity — it does not compare price against remaining budget. `getRemainingBudget` (utils/budgetCalculations.ts) is deliberately unclamped, so remaining budget can go negative if calculated values exceed the total. This is a deliberate MVP simplification, decided when the business-logic layer surfaced that neither this doc nor CLAUDE.md had specified a policy either way.
+
 ## Resolved this round
 
 - Formats finalized at three: `regular`, `regular_3wr`, `double_flex` (`super_flex` was considered, then removed — not part of MVP scope).
@@ -123,6 +127,8 @@ Real ingestion just needs to write into the same `PlayerValuation` table the see
 - K/DST are in-scope positions but session-level on/off toggles, not fixed per format.
 - Bench is 7 slots, position-agnostic, none required — required no schema change.
 - Budget presets are UI-layer, not modeled data.
+- `price_paid` is auto-set to the calculated combined value at assignment time (no manual bid entry in MVP).
+- Overspending the budget is allowed, not blocked (see "Budget enforcement" above).
 
 ## Still open
 

@@ -1,0 +1,116 @@
+// Owns the RosterAssignment list for the current session (see CLAUDE.md's
+// Session Isolation section — this state never reaches the server).
+//
+// The actual draft decision (validate + compute price_paid) is a small
+// pure function, computeDraftResult, kept separate from the React state
+// wiring below so it's directly unit-testable per CLAUDE.md's "write tests
+// for important business logic" rule, without rendering a component.
+
+import { useCallback, useState } from 'react'
+import {
+  isPlayerAssigned,
+  validateAssignment,
+  type AssignmentFailureReason,
+  type ToggleState,
+} from '../utils/rosterAssignment'
+import { getCombinedAuctionValue } from '../utils/auctionCalculations'
+import { getRemainingBudget, getSpent } from '../utils/budgetCalculations'
+import type { RosterPositionSlot } from '../types/League'
+import type { RosterAssignment } from '../types/Roster'
+import type { PlayerWithValuations } from '../types/Player'
+
+export type DraftPlayerResult =
+  | { ok: true; assignment: RosterAssignment }
+  | { ok: false; reason: AssignmentFailureReason }
+
+// price_paid is always the player's calculated combined value at the
+// moment of assignment — a frozen snapshot, never a manual entry (see
+// docs/datamodel.md's RosterAssignment note). No budget check gates this:
+// overspending is allowed, not blocked (see "Budget enforcement" in
+// docs/datamodel.md).
+export function computeDraftResult(
+  player: PlayerWithValuations,
+  slots: RosterPositionSlot[],
+  toggles: ToggleState,
+  currentAssignments: RosterAssignment[],
+): DraftPlayerResult {
+  const validation = validateAssignment(player, slots, toggles, currentAssignments)
+
+  if (!validation.ok) {
+    return { ok: false, reason: validation.reason }
+  }
+
+  const pricePaid = getCombinedAuctionValue(player.valuations) ?? 0
+
+  return {
+    ok: true,
+    assignment: {
+      slotInstanceId: validation.slotInstanceId,
+      playerId: player.id,
+      pricePaid,
+    },
+  }
+}
+
+// Un-drafting is a plain removal — nothing to validate, since an existing
+// assignment is always safe to remove. Kept as its own pure function
+// anyway, mirroring computeDraftResult, so it's directly unit-testable
+// without rendering the hook.
+export function removeAssignment(
+  assignments: RosterAssignment[],
+  playerId: string,
+): RosterAssignment[] {
+  return assignments.filter((a) => a.playerId !== playerId)
+}
+
+export interface UseRosterOptions {
+  slots: RosterPositionSlot[]
+  toggles: ToggleState
+  budget: number
+}
+
+export interface UseRosterResult {
+  assignments: RosterAssignment[]
+  spent: number
+  remaining: number
+  isPlayerDrafted: (playerId: string) => boolean
+  draftPlayer: (player: PlayerWithValuations) => DraftPlayerResult
+  undraftPlayer: (playerId: string) => void
+}
+
+export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRosterResult {
+  const [assignments, setAssignments] = useState<RosterAssignment[]>([])
+
+  const draftPlayer = useCallback(
+    (player: PlayerWithValuations): DraftPlayerResult => {
+      const result = computeDraftResult(player, slots, toggles, assignments)
+      if (result.ok) {
+        setAssignments((prev) => [...prev, result.assignment])
+      }
+      return result
+    },
+    [slots, toggles, assignments],
+  )
+
+  // Removing a RosterAssignment never touches favorites — the two are
+  // independent flags (CLAUDE.md's Favorites section), and favorites live
+  // in a completely separate hook/state, so there's nothing here that
+  // could couple them even accidentally.
+  const undraftPlayer = useCallback((playerId: string) => {
+    setAssignments((prev) => removeAssignment(prev, playerId))
+  }, [])
+
+  const isPlayerDrafted = useCallback(
+    (playerId: string) => isPlayerAssigned(playerId, assignments),
+    [assignments],
+  )
+
+  return {
+    assignments,
+    spent: getSpent(assignments),
+    remaining: getRemainingBudget(budget, assignments),
+    isPlayerDrafted,
+    draftPlayer,
+    undraftPlayer,
+  }
+}
