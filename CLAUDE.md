@@ -95,7 +95,7 @@ Before entering the draft interface, the user selects:
 - Regular-3WR
 - Double Flex
 
-Exact roster slot counts per format, and the Kicker/Defense on-off toggles, are defined as seeded data in `docs/data-model.md` — not hardcoded here, since they're expected to keep changing as the roster design is refined.
+Exact roster slot counts per format, and the Kicker/Defense on-off toggles, are defined as seeded data in `docs/datamodel.md` — not hardcoded here, since they're expected to keep changing as the roster design is refined.
 
 **Auction Budget** — user selects or enters a total auction budget (e.g. $200).
 
@@ -165,7 +165,7 @@ Business logic (auction math, roster assignment rules, budget calculations) must
 
 Keep ESPN/Yahoo data ingestion isolated from the core application so it can be built, tested, and swapped in independently of the mock data layer.
 
-**Data model:** the full entity/relationship design (Position, ValuationSource, LeagueFormat, RosterPositionSlot, Player, PlayerValuation, and the frontend-only session state) lives in `docs/data-model.md`. Consult it before writing schema, migrations, or seed data — it also documents which roster/format decisions are finalized versus still open.
+**Data model:** the full entity/relationship design (Position, ValuationSource, LeagueFormat, RosterPositionSlot, Player, PlayerValuation, and the frontend-only session state) lives in `docs/datamodel.md`. Consult it before writing schema, migrations, or seed data — it also documents which roster/format decisions are finalized versus still open.
 
 ## Frontend Structure
 
@@ -216,8 +216,35 @@ Notes on intent, not just layout:
 - **`services/`** is the seam between mock data and a real backend. `playerService.ts` / `leagueService.ts` expose the function signatures a component calls (`getPlayers()`, `getLeagueFormats()`); today they return the mock arrays, later they call the Express API. No component should import `data/` files directly — always go through `services/`, so swapping the data source later touches only these two files.
 - **`utils/`** holds the three business-logic categories called out under Architecture Principles — auction math, roster assignment rules, budget calculations — as separate, independently testable modules rather than one catch-all file.
 - **`hooks/`** is the client-side home for the session state described under Session Isolation & State Persistence (draft session config, roster assignments, favorites). Components read/write this state through hooks, not local component state, since multiple components share it.
-- **`data/leagueFormats.ts`** holds roster/format config as data (mirroring `docs/data-model.md`'s `LeagueFormat`/`RosterPositionSlot` shape), consistent with the rule that roster configuration must never be hardcoded — that applies even before Postgres exists.
+- **`data/leagueFormats.ts`** holds roster/format config as data (mirroring `docs/datamodel.md`'s `LeagueFormat`/`RosterPositionSlot` shape), consistent with the rule that roster configuration must never be hardcoded — that applies even before Postgres exists.
 - A router is not required for two pages (Setup, Draft); prefer simple state-driven conditional rendering unless a real need for URL-based navigation emerges, per "do not introduce unnecessary dependencies."
+
+## Backend Structure
+
+The backend lives in its own top-level `server/` folder, separate from `src/` — it holds only the database layer (and, next, the Express API); it never holds draft-progress state, per Session Isolation below.
+
+```
+server/
+├── db/
+│   ├── pool.ts          # single pg Pool from DATABASE_URL; fails fast if unset
+│   └── migrate.ts       # SQL migration runner (schema_migrations ledger)
+├── migrations/
+│   └── 001_initial_schema.sql
+└── seed/
+    ├── lookups.ts       # Position + ValuationSource rows (see note below)
+    └── seed.ts          # truncate + insert from src/data/*.ts, one transaction
+```
+
+Extension points for the next pass: `server/index.ts` (Express bootstrap), `server/routes/`, `server/services/` (the query layer the routes call).
+
+Notes on intent:
+
+- **Tooling stays minimal.** Plain SQL migration files plus the `pg` driver — no ORM. The reference data is a handful of small tables with no complex relations or runtime schema evolution, so an ORM would add a dependency, a DSL, and a codegen step to buy nothing here. The migration runner is a small hand-rolled script, not a library.
+- **Primary keys:** DB-generated identity ints, with real uniqueness enforced on the natural/business keys (`league_format.key`, `(league_format_id, slot_label)`, `(player_id, source, season_year)`, `espn_player_id`/`yahoo_player_id`). This matches `docs/datamodel.md`, which lists `id` and `key` as separate fields on `LeagueFormat` — a surrogate key plus a natural key, not one field doing both jobs. Mock-data string ids (`'p1'`, `'regular-qb'`) are intentionally not carried into the database as primary keys, since they're meaningless once real ESPN/Yahoo ingestion replaces the mock data — exactly the "no structural rework" swap-in path the Development Strategy calls for.
+- **`eligible_positions` is a join table** (`roster_slot_eligible_position`), not an array column, so a typo'd position code is rejected by a foreign key rather than inserted silently — the same referential-integrity reasoning `docs/datamodel.md` already gives for making `Position` a lookup table rather than an enum.
+- **The seed script imports `src/data/*.ts` directly** (via `tsx`, since Node can't execute TypeScript natively) so there is exactly one source of truth for mock data — no hand-authored duplicate to drift out of sync. `Position` and `ValuationSource` rows are the one exception (`server/seed/lookups.ts`): they exist in the frontend only as TypeScript union types, which are erased at runtime, so there's nothing in `src/` to read them from. The seed validates every position/source code it encounters against `lookups.ts` and aborts on a mismatch, to catch drift between the two.
+- **Seeding is truncate-and-reinsert, not upsert**, and that's safe specifically because of Session Isolation: nothing user-owned or session-specific lives in these tables, so they're wholly derived from the source files and fully disposable. Real ingestion later will upsert on `espn_player_id`/`yahoo_player_id` instead, per the swap-in path in `docs/datamodel.md`.
+- **No combined-value column, ever.** Combined auction value stays derived from `player_valuation` rows at read time — enforced by convention now, worth a quick `information_schema` check after any future migration touching `player` or `player_valuation`.
 
 ## Session Isolation & State Persistence
 

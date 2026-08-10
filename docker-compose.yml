@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: fantasy-auction-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fantasy_auction}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-fantasy_auction_dev}
+    ports:
+      # Host port is 5434, not 5432: this machine already runs native
+      # PostgreSQL services (postgresql-x64-14 / -18) that hold 5432 and
+      # 5433, so host connections to 5432 reach those instead of this
+      # container. Container-side stays 5432. Override with POSTGRES_HOST_PORT.
+      - "${POSTGRES_HOST_PORT:-5434}:5432"
+    volumes:
+      - fantasy_auction_pgdata:/var/lib/postgresql/data
+
+volumes:
+  fantasy_auction_pgdata:
