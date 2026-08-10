@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+/*
+ * Defensive baseline: nothing upstream should be constraining #root's
+ * width (no other stylesheet touches it), but making that explicit here
+ * removes any doubt when diagnosing page-level centering.
+ */
+html,
+body,
+#root {
+  width: 100%;
+}
+

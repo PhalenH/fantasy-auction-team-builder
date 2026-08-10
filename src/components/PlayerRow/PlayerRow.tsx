@@ -9,7 +9,8 @@
 // independent exactly as they were with PlayerCard's sibling buttons.
 
 import { getCombinedAuctionValue } from '../../utils/auctionCalculations'
-import type { PlayerWithValuations, PositionCode } from '../../types/Player'
+import { POSITION_TINTS } from '../positionColors'
+import type { PlayerWithValuations } from '../../types/Player'
 
 interface PlayerRowProps {
   player: PlayerWithValuations
@@ -21,18 +22,6 @@ interface PlayerRowProps {
 
 function formatMoney(value: number | null): string {
   return value === null ? '—' : `$${value.toFixed(2)}`
-}
-
-// Pastel -50 tints only — deliberately not the saturated mockup colors, so
-// slate-900/slate-600 body text stays fully readable on top (see PR
-// discussion: contrast, not decoration, is the point).
-const POSITION_TINTS: Record<PositionCode, string> = {
-  QB: 'bg-red-50',
-  RB: 'bg-green-50',
-  WR: 'bg-blue-50',
-  TE: 'bg-yellow-50',
-  DST: 'bg-purple-50',
-  K: 'bg-pink-50',
 }
 
 function PlayerRow({ player, isDrafted, isFavorited, onDraft, onToggleFavorite }: PlayerRowProps) {
