@@ -22,6 +22,8 @@ Build the application using mock/seeded player data first. Do **not** implement 
 
 The data model should be designed so real ESPN/Yahoo data can replace the mock data later without structural rework.
 
+**Status: milestone reached.** The app now runs end to end against the real stack — React frontend → Express API → Postgres, seeded from the same mock data. This is not the same thing as real ESPN/Yahoo ingestion: the content in the database is still the seeded mock player set, just served through a real API and database instead of bundled directly into the frontend. Real ESPN/Yahoo ingestion (writing into `player_valuation` via the match keys on `Player`, per `docs/datamodel.md`'s swap-in path) remains the next phase, not yet started.
+
 ## Core User Flow (MVP)
 
 ```
@@ -213,7 +215,7 @@ src/
 
 Notes on intent, not just layout:
 
-- **`services/`** is the seam between mock data and a real backend. `playerService.ts` / `leagueService.ts` expose the function signatures a component calls (`getPlayers()`, `getLeagueFormats()`); today they return the mock arrays, later they call the Express API. No component should import `data/` files directly — always go through `services/`, so swapping the data source later touches only these two files.
+- **`services/`** is the seam between the frontend and the backend. `playerService.ts` / `leagueService.ts` expose the function signatures a component calls (`getPlayers()`, `getLeagueFormats()`); they now call the real Express API (`/api/players`, `/api/league-formats`) via `fetch()`, routed through Vite's dev proxy. No component should import `data/` files directly — those files are no longer bundled into the frontend at all; they're read only by `server/seed/seed.ts` as the single source of truth for seeding Postgres.
 - **`utils/`** holds the three business-logic categories called out under Architecture Principles — auction math, roster assignment rules, budget calculations — as separate, independently testable modules rather than one catch-all file.
 - **`hooks/`** is the client-side home for the session state described under Session Isolation & State Persistence (draft session config, roster assignments, favorites). Components read/write this state through hooks, not local component state, since multiple components share it.
 - **`data/leagueFormats.ts`** holds roster/format config as data (mirroring `docs/datamodel.md`'s `LeagueFormat`/`RosterPositionSlot` shape), consistent with the rule that roster configuration must never be hardcoded — that applies even before Postgres exists.

@@ -4,13 +4,14 @@
 // which docs/datamodel.md explicitly calls a "UI-layer filter on the
 // existing Position field" rather than something that belongs in utils/.
 
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { getPlayers } from '../../services/playerService'
+import { useAsyncData } from '../../hooks/useAsyncData'
+import DataStatus from '../../components/DataStatus/DataStatus'
 import Roster from '../../components/Roster/Roster'
 import PlayerList from '../../components/PlayerList/PlayerList'
 import FavoritesList from '../../components/FavoritesList/FavoritesList'
 import type { RosterPositionSlot } from '../../types/League'
-import type { PlayerWithValuations } from '../../types/Player'
 import type { ToggleState } from '../../utils/rosterAssignment'
 import type { UseRosterResult } from '../../hooks/useRoster'
 import type { UseFavoritesResult } from '../../hooks/useFavorites'
@@ -24,17 +25,26 @@ interface DraftProps {
 }
 
 function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
-  const [players, setPlayers] = useState<PlayerWithValuations[]>([])
-
-  useEffect(() => {
-    getPlayers().then(setPlayers)
-  }, [])
+  // The player pool comes from the API now, so this load can fail.
+  const { data, status, error } = useAsyncData(getPlayers)
+  const players = useMemo(() => data ?? [], [data])
 
   const visiblePlayers = players.filter(
     (player) =>
       (player.position !== 'K' || toggles.kickerEnabled) &&
       (player.position !== 'DST' || toggles.defenseEnabled),
   )
+
+  // Roster and Favorites both resolve player names out of this same list, so
+  // there's nothing meaningful to render until it arrives.
+  if (status !== 'ready') {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6 p-6">
+        <h1 className="text-2xl font-bold text-slate-900">Draft</h1>
+        <DataStatus status={status} loadingLabel="Loading players…" error={error} />
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">

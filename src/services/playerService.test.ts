@@ -1,31 +1,43 @@
-// Smoke tests — there's no real logic in this service yet, just confirming
-// it resolves the expected shape (mock players with valuations embedded,
-// no precomputed combined value) as documented in CLAUDE.md's Frontend
-// Structure notes.
+// Confirms getPlayers() calls the real API endpoint through the Vite proxy
+// path and passes the response through unchanged. Fetch is stubbed, so this
+// needs neither the Express server nor Postgres — the `server` test project
+// covers the live round trip.
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { getPlayers } from './playerService'
-import { players, playerValuations } from '../data/mockPlayers'
+import { mockApi, mockApiErrorResponse, playersPayload } from '../test/apiMock'
+import { players } from '../data/mockPlayers'
 
 describe('getPlayers', () => {
-  it('resolves a promise (async even over static mock data)', () => {
-    expect(getPlayers()).toBeInstanceOf(Promise)
+  beforeEach(() => {
+    mockApi()
   })
 
-  it('returns every mock player with its valuations embedded', async () => {
-    const result = await getPlayers()
-    expect(result).toHaveLength(players.length)
+  it('requests a relative /api path so the Vite dev proxy handles it', async () => {
+    await getPlayers()
+    // A hardcoded http://localhost:3001 would break the proxy setup and any
+    // non-dev deployment.
+    expect(fetch).toHaveBeenCalledWith('/api/players')
+  })
 
-    const mahomes = result.find((p) => p.id === 'p1')!
-    expect(mahomes.name).toBe('Patrick Mahomes')
-    expect(mahomes.valuations).toEqual(
-      playerValuations.filter((v) => v.playerId === 'p1'),
-    )
+  it('resolves the players with their valuations embedded', async () => {
+    const result = await getPlayers()
+
+    expect(result).toHaveLength(players.length)
+    expect(result).toEqual(playersPayload)
+
+    const mahomes = result.find((player) => player.name === 'Patrick Mahomes')!
+    expect(mahomes.valuations.map((valuation) => valuation.auctionValue)).toEqual([42, 45])
   })
 
   it('does not attach a precomputed combined value', async () => {
     const [player] = await getPlayers()
     expect(player).not.toHaveProperty('combinedValue')
     expect(player).not.toHaveProperty('auctionValue')
+  })
+
+  it('rejects rather than resolving an error body as if it were players', async () => {
+    mockApiErrorResponse()
+    await expect(getPlayers()).rejects.toThrow(/Could not load players \(HTTP 503\)/)
   })
 })

@@ -1,11 +1,21 @@
 // Integration-style tests over the real component tree (App -> Setup ->
-// Draft), using the real services (mock data, wrapped in Promises) rather
-// than mocks — this is exercising the actual CLAUDE.md Core User Flow, not
-// a stubbed approximation of it.
+// Draft), using the real services and the real hooks/utils pipeline — this
+// exercises the actual CLAUDE.md Core User Flow, not a stubbed
+// approximation of it.
+//
+// Only the network boundary is stubbed: the services now call fetch, so
+// mockApi() serves the same src/data fixtures the API itself is seeded
+// from. That keeps this project fast and independent of the Express server
+// and Postgres (the `server` test project covers the live round trip).
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import App from './App'
+import { mockApi, mockApiErrorResponse, mockApiNetworkFailure, mockApiNeverResolves } from './test/apiMock'
+
+beforeEach(() => {
+  mockApi()
+})
 
 async function goToDraftPage() {
   render(<App />)
@@ -19,11 +29,54 @@ async function goToDraftPage() {
   await screen.findByLabelText('Draft Christian McCaffrey')
 }
 
+// The mock-data services could never fail; these can. The point of these
+// tests is that a failed load says so, instead of leaving a blank screen.
+describe('Setup page data states', () => {
+  it('shows a loading state while league formats are in flight', () => {
+    mockApiNeverResolves()
+    render(<App />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading league formats')
+    expect(screen.queryByText('Set Up Your Draft')).not.toBeInTheDocument()
+  })
+
+  it('replaces loading with the setup form once formats resolve', async () => {
+    render(<App />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading league formats')
+
+    expect(await screen.findByText('Set Up Your Draft')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Regular' })).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows an actionable error when the API returns a non-2xx response', async () => {
+    mockApiErrorResponse()
+    render(<App />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Could not load league formats (HTTP 503)')
+    expect(alert).toHaveTextContent('docker compose up -d')
+    expect(screen.queryByText('Set Up Your Draft')).not.toBeInTheDocument()
+  })
+
+  it('shows an actionable error when the request itself fails', async () => {
+    mockApiNetworkFailure()
+    render(<App />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('the API did not respond')
+    expect(alert).toHaveTextContent('npm run dev:server')
+  })
+})
+
 describe('Core User Flow', () => {
   it('walks from Setup through League Format + Budget selection into the Draft page', async () => {
     render(<App />)
 
-    expect(screen.getByText('Set Up Your Draft')).toBeInTheDocument()
+    // findBy, not getBy: league formats are fetched now, so Setup renders
+    // after the load resolves rather than on the first paint.
+    expect(await screen.findByText('Set Up Your Draft')).toBeInTheDocument()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Regular' }))
     fireEvent.click(screen.getByRole('button', { name: '$200' }))
@@ -38,7 +91,7 @@ describe('Core User Flow', () => {
 
   it('disables Start Draft until both a format and a budget are chosen', async () => {
     render(<App />)
-    expect(screen.getByRole('button', { name: 'Start Draft' })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: 'Start Draft' })).toBeDisabled()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Regular' }))
     expect(screen.getByRole('button', { name: 'Start Draft' })).toBeDisabled()

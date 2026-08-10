@@ -1,15 +1,15 @@
-// The seam between mock data and a real backend (see CLAUDE.md's Frontend
-// Structure notes). Components/hooks should call getLeagueFormats(), never
-// import data/leagueFormats.ts directly.
+// The seam between the frontend and the backend (see CLAUDE.md's Frontend
+// Structure notes). Components call getLeagueFormats(); they never know
+// where the data comes from.
+//
+// data/leagueFormats.ts is no longer imported here, but is deliberately kept
+// — server/seed/seed.ts seeds Postgres from it.
 
-import { leagueFormats, rosterPositionSlots } from '../data/leagueFormats'
+import { fetchJson } from './apiClient'
 import type { LeagueFormatWithSlots } from '../types/League'
 
-// Typed as async even though it's synchronous today, so callers already
-// treat it as async and a real fetch() drop-in requires no caller changes.
+// GET /api/league-formats returns each format with its roster slots
+// embedded, including the K/DST toggleKey tags.
 export async function getLeagueFormats(): Promise<LeagueFormatWithSlots[]> {
-  return leagueFormats.map((format) => ({
-    ...format,
-    slots: rosterPositionSlots.filter((slot) => slot.leagueFormatId === format.id),
-  }))
+  return fetchJson<LeagueFormatWithSlots[]>('/api/league-formats', 'league formats')
 }
