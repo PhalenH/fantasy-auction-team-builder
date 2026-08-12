@@ -17,6 +17,7 @@ import type { Pool } from 'pg'
 
 import { createLeagueFormatsRouter } from './routes/leagueFormats'
 import { createPlayersRouter } from './routes/players'
+import { createTeamsRouter } from './routes/teams'
 
 // Errors that mean "the database isn't reachable" rather than "the query was
 // wrong" — Node socket-level codes plus the Postgres connection SQLSTATEs.
@@ -62,6 +63,7 @@ export function isDatabaseUnreachable(error: Error): boolean {
 export const API_MOUNTS = [
   { path: '/api/players', createRouter: createPlayersRouter },
   { path: '/api/league-formats', createRouter: createLeagueFormatsRouter },
+  { path: '/api/teams', createRouter: createTeamsRouter },
 ] as const
 
 export function createApp(db: Pool): Express {
@@ -78,7 +80,7 @@ export function createApp(db: Pool): Express {
   app.use((req: Request, res: Response) => {
     res.status(404).json({
       error: 'not_found',
-      message: `No route for ${req.method} ${req.originalUrl}. This API is read-only and serves GET /api/players and GET /api/league-formats.`,
+      message: `No route for ${req.method} ${req.originalUrl}. This API is read-only and serves GET /api/players, GET /api/league-formats, and GET /api/teams.`,
     })
   })
 

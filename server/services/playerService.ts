@@ -17,12 +17,14 @@ import type {
   ValuationSourceCode,
 } from '../../src/types/Player'
 
-// Shapes as Postgres actually returns them — deliberately distinct from the
-// frontend types, since three columns need conversion (see below).
+// Shape as the joined query actually returns it — deliberately distinct
+// from the frontend type, since it's snake_case and includes the raw FK
+// (team_code) alongside the joined team_display_name/bye_week.
 interface PlayerRow {
   id: number
   name: string
-  nfl_team: string
+  team_code: string
+  team_display_name: string
   position_code: PositionCode
   bye_week: number
   espn_player_id: string | null
@@ -42,10 +44,25 @@ interface ValuationRow {
 
 // ORDER BY id reproduces the seeded insertion order, so the payload order
 // matches the mock array the frontend is currently tested against.
+//
+// Joins team server-side rather than leaving the frontend to fetch /
+// cross-reference /api/teams itself — decided in docs/downstream_
+// implementation_plan.md: one query enforced correct by the
+// player.team_code -> team FK, nothing for two independently-fetched lists
+// to get out of sync on. bye_week in particular now lives only on `team`
+// (docs/datamodel.md), so this join is the only way to get it at all.
 const PLAYERS_SQL = `
-  SELECT id, name, nfl_team, position_code, bye_week, espn_player_id, yahoo_player_id
-  FROM player
-  ORDER BY id
+  SELECT p.id,
+         p.name,
+         p.team_code,
+         t.display_name AS team_display_name,
+         p.position_code,
+         t.bye_week,
+         p.espn_player_id,
+         p.yahoo_player_id
+  FROM player p
+  JOIN team t ON t.code = p.team_code
+  ORDER BY p.id
 `
 
 const VALUATIONS_SQL = `
@@ -95,7 +112,8 @@ export async function getPlayers(db: Pool): Promise<PlayerWithValuations[]> {
   return players.rows.map((row) => ({
     id: String(row.id),
     name: row.name,
-    nflTeam: row.nfl_team,
+    teamCode: row.team_code,
+    teamDisplayName: row.team_display_name,
     position: row.position_code,
     byeWeek: row.bye_week,
     // The frontend type declares these optional (string | undefined), so a

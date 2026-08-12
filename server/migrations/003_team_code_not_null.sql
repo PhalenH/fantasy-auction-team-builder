@@ -1,0 +1,20 @@
+-- Tightens player.team_code from nullable to NOT NULL, closing the gap
+-- flagged in docs/datamodel.md's "Still open" note.
+--
+-- 002_team_and_real_ingestion.sql added team_code as nullable specifically
+-- to avoid breaking against a DB that already had player rows (adding a
+-- NOT NULL column with no default fails on a non-empty table). It did not
+-- backfill team_code from the old nfl_team value before dropping nfl_team,
+-- so any pre-existing rows briefly had a NULL team_code until the next
+-- reseed/ingestion run repopulated them from their original source
+-- (server/seed/seed.ts from src/data/mockPlayers.ts, or
+-- server/ingestion/run.ts from the CSV).
+--
+-- PRECONDITION: every player row must already have a non-null team_code
+-- before this migration runs, or the ALTER COLUMN below fails outright
+-- (loudly, not silently) rather than leaving a partially-tightened schema.
+-- server/seed/seed.ts and server/ingestion/run.ts both always populate
+-- team_code on every write, so running `npm run db:seed` or
+-- `npm run db:ingest` after 002 (and before this migration, if they haven't
+-- run since) satisfies it.
+ALTER TABLE player ALTER COLUMN team_code SET NOT NULL;

@@ -63,9 +63,9 @@ describe('statelessness / read-only guarantees', () => {
     // Surfaced in the test output as the enumeration proof.
     console.log('Registered routes:', routes)
 
-    // The entire API surface, pinned: two GETs and nothing else. A new route
-    // of any kind fails here until it's deliberately added to this list.
-    expect(routes).toEqual(['GET /api/players', 'GET /api/league-formats'])
+    // The entire API surface, pinned: three GETs and nothing else. A new
+    // route of any kind fails here until it's deliberately added to this list.
+    expect(routes).toEqual(['GET /api/players', 'GET /api/league-formats', 'GET /api/teams'])
     expect(routes.some((route) => /^(POST|PUT|PATCH|DELETE)/.test(route))).toBe(false)
   })
 
@@ -81,6 +81,8 @@ describe('statelessness / read-only guarantees', () => {
     ['delete', '/api/players'],
     ['post', '/api/league-formats'],
     ['delete', '/api/league-formats'],
+    ['post', '/api/teams'],
+    ['delete', '/api/teams'],
   ] as const)('rejects %s %s — no draft state can be written', async (method, path) => {
     const response = await request(app)[method](path)
     expect(response.status).toBe(404)
@@ -115,6 +117,12 @@ describe('database unreachable', () => {
 
   it('fails GET /api/league-formats with 503 as well', async () => {
     const response = await request(unreachableApp).get('/api/league-formats')
+    expect(response.status).toBe(503)
+    expect(response.body.error).toBe('database_unavailable')
+  })
+
+  it('fails GET /api/teams with 503 as well', async () => {
+    const response = await request(unreachableApp).get('/api/teams')
     expect(response.status).toBe(503)
     expect(response.body.error).toBe('database_unavailable')
   })

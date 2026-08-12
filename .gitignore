@@ -70,6 +70,12 @@ web_modules/
 .env.*
 !.env.example
 
+# Real-ingestion source drops: recurring, date-stamped weekly snapshots, not
+# a static fixture — see docs/datamodel.md and CLAUDE.md's Backend Structure
+# notes. server/ingestion/data/Bye_Weeks.csv and data/sample/ are committed
+# normally (they change rarely / are tiny fixtures).
+server/ingestion/data/NFL_Auction_Values_*.csv
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

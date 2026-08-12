@@ -14,7 +14,8 @@
     "test:all": "vitest run",
     "db:migrate": "node --env-file=.env --import tsx server/db/migrate.ts",
     "db:seed": "node --env-file=.env --import tsx server/seed/seed.ts",
-    "db:reset": "npm run db:migrate && npm run db:seed"
+    "db:reset": "npm run db:migrate && npm run db:seed",
+    "db:ingest": "node --env-file=.env --import tsx server/ingestion/run.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

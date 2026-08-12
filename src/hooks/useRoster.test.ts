@@ -18,7 +18,8 @@ function playerWithValuations(overrides: Partial<PlayerWithValuations> = {}): Pl
   return {
     id: 'test-rb',
     name: 'Test Runningback',
-    nflTeam: 'TST',
+    teamCode: 'TST',
+    teamDisplayName: 'Test Team',
     position: 'RB',
     byeWeek: 1,
     valuations: [

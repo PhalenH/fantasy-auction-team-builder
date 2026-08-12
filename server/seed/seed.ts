@@ -19,13 +19,14 @@ import type { PoolClient } from 'pg'
 import { leagueFormats, rosterPositionSlots } from '../../src/data/leagueFormats'
 import { players, playerValuations } from '../../src/data/mockPlayers'
 import { pool } from '../db/pool'
-import { positions, valuationSources } from './lookups'
+import { positions, teams, valuationSources } from './lookups'
 
 // Child-before-parent order; CASCADE covers the FKs either way, but being
 // explicit keeps the intent readable.
 const DATA_TABLES = [
   'player_valuation',
   'player',
+  'team',
   'roster_slot_eligible_position',
   'roster_position_slot',
   'league_format',
@@ -38,6 +39,7 @@ const DATA_TABLES = [
 function validate(): void {
   const positionCodes = new Set<string>(positions.map((position) => position.code))
   const sourceCodes = new Set<string>(valuationSources.map((source) => source.code))
+  const teamCodes = new Set<string>(teams.map((team) => team.code))
   const formatIds = new Set(leagueFormats.map((format) => format.id))
   const playerIds = new Set(players.map((player) => player.id))
 
@@ -45,6 +47,11 @@ function validate(): void {
     if (!positionCodes.has(player.position)) {
       throw new Error(
         `Player "${player.name}" has position "${player.position}", which is not defined in seed/lookups.ts.`,
+      )
+    }
+    if (!teamCodes.has(player.teamCode)) {
+      throw new Error(
+        `Player "${player.name}" has team "${player.teamCode}", which is not defined in seed/lookups.ts.`,
       )
     }
   }
@@ -93,6 +100,14 @@ async function seed(client: PoolClient): Promise<Record<string, number>> {
     ])
   }
 
+  for (const team of teams) {
+    await client.query('INSERT INTO team (code, display_name, bye_week) VALUES ($1, $2, $3)', [
+      team.code,
+      team.displayName,
+      team.byeWeek,
+    ])
+  }
+
   // The mock files' string ids ('regular', 'p1') are only a local join key —
   // these maps translate them to the database's generated ids.
   const formatIdByKey = new Map<string, number>()
@@ -125,15 +140,14 @@ async function seed(client: PoolClient): Promise<Record<string, number>> {
   const playerIdByKey = new Map<string, number>()
   for (const player of players) {
     const { rows } = await client.query<{ id: number }>(
-      `INSERT INTO player (name, nfl_team, position_code, bye_week, espn_player_id, yahoo_player_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO player (name, team_code, position_code, espn_player_id, yahoo_player_id)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
       [
         player.name,
-        player.nflTeam,
+        player.teamCode,
         player.position,
-        player.byeWeek,
-        // Null under mock data — populated later by real ingestion.
+        // Null under mock data — permanently unpopulated by real ingestion too.
         player.espnPlayerId ?? null,
         player.yahooPlayerId ?? null,
       ],
@@ -161,6 +175,7 @@ async function seed(client: PoolClient): Promise<Record<string, number>> {
   return {
     position: positions.length,
     valuation_source: valuationSources.length,
+    team: teams.length,
     league_format: leagueFormats.length,
     roster_position_slot: rosterPositionSlots.length,
     roster_slot_eligible_position: eligibleRowCount,

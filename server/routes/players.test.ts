@@ -11,6 +11,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import type { PlayerWithValuations } from '../../src/types/Player'
 import { createApp } from '../app'
 import { pool } from '../db/pool'
+import { teams } from '../seed/lookups'
 
 const app = createApp(pool)
 
@@ -33,9 +34,18 @@ describe('GET /api/players', () => {
   it('embeds each player’s valuations, matching the CLAUDE.md worked example', async () => {
     const players = await fetchPlayers()
     const mahomes = players.find((player) => player.name === 'Patrick Mahomes')
+    // byeWeek/teamDisplayName come from the team join, not a Player column —
+    // cross-checked against lookups.ts rather than a magic number so this
+    // test doesn't silently drift if the KC bye week changes there.
+    const kc = teams.find((team) => team.code === 'KC')!
 
     expect(mahomes).toBeDefined()
-    expect(mahomes).toMatchObject({ nflTeam: 'KC', position: 'QB', byeWeek: 10 })
+    expect(mahomes).toMatchObject({
+      teamCode: 'KC',
+      teamDisplayName: kc.displayName,
+      position: 'QB',
+      byeWeek: kc.byeWeek,
+    })
     expect(mahomes!.valuations).toHaveLength(2)
 
     const bySource = Object.fromEntries(mahomes!.valuations.map((v) => [v.source, v.auctionValue]))
@@ -107,6 +117,8 @@ describe('GET /api/players', () => {
   it('does not leak database column names into the payload', async () => {
     const [player] = await fetchPlayers()
     expect(player).not.toHaveProperty('nfl_team')
+    expect(player).not.toHaveProperty('team_code')
+    expect(player).not.toHaveProperty('team_display_name')
     expect(player).not.toHaveProperty('position_code')
     expect(player).not.toHaveProperty('bye_week')
   })

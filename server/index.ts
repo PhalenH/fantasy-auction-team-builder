@@ -13,4 +13,5 @@ createApp(pool).listen(port, () => {
   console.log(`API listening on http://localhost:${port}`)
   console.log('  GET /api/players')
   console.log('  GET /api/league-formats')
+  console.log('  GET /api/teams')
 })

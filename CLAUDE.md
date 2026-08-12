@@ -22,7 +22,7 @@ Build the application using mock/seeded player data first. Do **not** implement 
 
 The data model should be designed so real ESPN/Yahoo data can replace the mock data later without structural rework.
 
-**Status: milestone reached.** The app now runs end to end against the real stack — React frontend → Express API → Postgres, seeded from the same mock data. This is not the same thing as real ESPN/Yahoo ingestion: the content in the database is still the seeded mock player set, just served through a real API and database instead of bundled directly into the frontend. Real ESPN/Yahoo ingestion (writing into `player_valuation` via the match keys on `Player`, per `docs/datamodel.md`'s swap-in path) remains the next phase, not yet started.
+**Status: real ingestion online.** The app runs end to end against the real stack — React frontend → Express API → Postgres — and Postgres is now primarily populated by `server/ingestion/`, which upserts a weekly ESPN/Yahoo auction-value CSV and a bye-week source into `Team`, `Player`, and `player_valuation`, matching existing `Player` rows on `(name, position)` per `docs/datamodel.md`'s real-ingestion match keys. `server/seed/` (the mock/seeded data path) remains in place as a no-CSV-required dev fallback — it still works exactly as before — but it is no longer the primary or maintained data path, and there is no obligation to keep its mock player set in sync with real values going forward.
 
 ## Core User Flow (MVP)
 
@@ -231,10 +231,17 @@ server/
 │   ├── pool.ts          # single pg Pool from DATABASE_URL; fails fast if unset
 │   └── migrate.ts       # SQL migration runner (schema_migrations ledger)
 ├── migrations/
-│   └── 001_initial_schema.sql
-└── seed/
-    ├── lookups.ts       # Position + ValuationSource rows (see note below)
-    └── seed.ts          # truncate + insert from src/data/*.ts, one transaction
+│   ├── 001_initial_schema.sql
+│   └── 002_team_and_real_ingestion.sql
+├── seed/
+│   ├── lookups.ts       # Position + ValuationSource + Team rows (see note below)
+│   └── seed.ts          # truncate + insert from src/data/*.ts, one transaction (dev fallback)
+└── ingestion/
+    ├── sources/
+    │   ├── auctionValues.ts   # parses the weekly auction-value CSV
+    │   └── byeWeeks.ts        # parses the bye-week CSV
+    ├── normalize.ts      # name normalization for the Player match key
+    └── run.ts            # orchestrates: upsert Team → upsert Player → upsert PlayerValuation
 ```
 
 Extension points for the next pass: `server/index.ts` (Express bootstrap), `server/routes/`, `server/services/` (the query layer the routes call).
@@ -245,7 +252,7 @@ Notes on intent:
 - **Primary keys:** DB-generated identity ints, with real uniqueness enforced on the natural/business keys (`league_format.key`, `(league_format_id, slot_label)`, `(player_id, source, season_year)`, `espn_player_id`/`yahoo_player_id`). This matches `docs/datamodel.md`, which lists `id` and `key` as separate fields on `LeagueFormat` — a surrogate key plus a natural key, not one field doing both jobs. Mock-data string ids (`'p1'`, `'regular-qb'`) are intentionally not carried into the database as primary keys, since they're meaningless once real ESPN/Yahoo ingestion replaces the mock data — exactly the "no structural rework" swap-in path the Development Strategy calls for.
 - **`eligible_positions` is a join table** (`roster_slot_eligible_position`), not an array column, so a typo'd position code is rejected by a foreign key rather than inserted silently — the same referential-integrity reasoning `docs/datamodel.md` already gives for making `Position` a lookup table rather than an enum.
 - **The seed script imports `src/data/*.ts` directly** (via `tsx`, since Node can't execute TypeScript natively) so there is exactly one source of truth for mock data — no hand-authored duplicate to drift out of sync. `Position` and `ValuationSource` rows are the one exception (`server/seed/lookups.ts`): they exist in the frontend only as TypeScript union types, which are erased at runtime, so there's nothing in `src/` to read them from. The seed validates every position/source code it encounters against `lookups.ts` and aborts on a mismatch, to catch drift between the two.
-- **Seeding is truncate-and-reinsert, not upsert**, and that's safe specifically because of Session Isolation: nothing user-owned or session-specific lives in these tables, so they're wholly derived from the source files and fully disposable. Real ingestion later will upsert on `espn_player_id`/`yahoo_player_id` instead, per the swap-in path in `docs/datamodel.md`.
+- **Seeding is truncate-and-reinsert, not upsert**, and that's safe specifically because of Session Isolation: nothing user-owned or session-specific lives in these tables, so they're wholly derived from the source files and fully disposable. Real ingestion (`server/ingestion/`) instead upserts, matching `Player` rows on `(name, position)` — not `espn_player_id`/`yahoo_player_id`, which the real source has none of and never will — per `docs/datamodel.md`'s real-ingestion match keys.
 - **No combined-value column, ever.** Combined auction value stays derived from `player_valuation` rows at read time — enforced by convention now, worth a quick `information_schema` check after any future migration touching `player` or `player_valuation`.
 
 ## Session Isolation & State Persistence

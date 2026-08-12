@@ -76,7 +76,7 @@ function PlayerRow({ player, isDrafted, isFavorited, onDraft, onToggleFavorite }
         </div>
       </td>
       <td className="py-2 pr-2 text-slate-600">{player.position}</td>
-      <td className="py-2 pr-2 text-slate-600">{player.nflTeam}</td>
+      <td className="py-2 pr-2 text-slate-600">{player.teamCode}</td>
       <td className="py-2 pr-2 text-slate-600">{player.byeWeek}</td>
       <td className="py-2 pr-2 text-slate-600">{formatMoney(yahoo)}</td>
       <td className="py-2 pr-2 text-slate-600">{formatMoney(espn)}</td>

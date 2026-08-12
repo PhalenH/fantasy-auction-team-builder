@@ -18,7 +18,8 @@ import type { PlayerWithValuations } from '../../types/Player'
 const player: PlayerWithValuations = {
   id: 'p1',
   name: 'Test Player',
-  nflTeam: 'TST',
+  teamCode: 'TST',
+  teamDisplayName: 'Test Team',
   position: 'RB',
   byeWeek: 1,
   valuations: [
