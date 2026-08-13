@@ -1,12 +1,15 @@
 // Owns the RosterAssignment list for the current session (see CLAUDE.md's
-// Session Isolation section — this state never reaches the server).
+// Session Isolation section — this state never reaches the server). It's
+// mirrored into the shared sessionStorage blob (see sessionPersistence.ts)
+// so it survives a page refresh, per CLAUDE.md's Session Isolation
+// "Optional enhancement".
 //
 // The actual draft decision (validate + compute price_paid) is a small
 // pure function, computeDraftResult, kept separate from the React state
 // wiring below so it's directly unit-testable per CLAUDE.md's "write tests
 // for important business logic" rule, without rendering a component.
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   isPlayerAssigned,
   validateAssignment,
@@ -15,6 +18,7 @@ import {
 } from '../utils/rosterAssignment'
 import { getCombinedAuctionValue } from '../utils/auctionCalculations'
 import { getRemainingBudget, getSpent } from '../utils/budgetCalculations'
+import { readPersistedSession, writePersistedSessionSlice } from './sessionPersistence'
 import type { RosterPositionSlot } from '../types/League'
 import type { RosterAssignment } from '../types/Roster'
 import type { PlayerWithValuations } from '../types/Player'
@@ -77,6 +81,20 @@ export function clearAllAssignments(assignments: RosterAssignment[]): RosterAssi
   )
 }
 
+// Drops any assignment whose playerId isn't in knownPlayerIds, rather than
+// failing outright. Exists for sessionStorage rehydration: a persisted
+// RosterAssignment can outlive the player it points at (a data refresh
+// removed or re-identified that player), and the player pool itself only
+// loads asynchronously after this hook already mounted with whatever was in
+// storage — so this runs as a follow-up correction once the real pool
+// arrives (see Draft.tsx), not as part of reading storage itself.
+export function pruneAssignmentsForKnownPlayers(
+  assignments: RosterAssignment[],
+  knownPlayerIds: ReadonlySet<string>,
+): RosterAssignment[] {
+  return assignments.filter((assignment) => knownPlayerIds.has(assignment.playerId))
+}
+
 // Manual price editing (docs/manual_bid_entry_plan.md) — a deliberately
 // separate, explicit edit of an *existing* RosterAssignment from the roster
 // view, distinct from computeDraftResult's automatic price_paid at
@@ -130,10 +148,22 @@ export interface UseRosterResult {
   undraftPlayer: (playerId: string) => void
   updatePrice: (slotInstanceId: string, newPrice: number) => void
   clearRoster: () => void
+  pruneUnknownPlayers: (knownPlayers: PlayerWithValuations[]) => void
 }
 
 export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRosterResult {
-  const [assignments, setAssignments] = useState<RosterAssignment[]>([])
+  // Ref rather than a module-level read, same reasoning as useDraftSession:
+  // each hook instance should re-read sessionStorage at its own mount time.
+  const persistedRef = useRef<RosterAssignment[] | undefined>(undefined)
+  if (persistedRef.current === undefined) {
+    persistedRef.current = readPersistedSession()?.assignments ?? []
+  }
+
+  const [assignments, setAssignments] = useState<RosterAssignment[]>(persistedRef.current)
+
+  useEffect(() => {
+    writePersistedSessionSlice({ assignments })
+  }, [assignments])
 
   const draftPlayer = useCallback(
     (player: PlayerWithValuations): DraftPlayerResult => {
@@ -174,6 +204,13 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     [assignments],
   )
 
+  // See pruneAssignmentsForKnownPlayers above for why this is a separate,
+  // explicitly-called step rather than folded into rehydration itself.
+  const pruneUnknownPlayers = useCallback((knownPlayers: PlayerWithValuations[]) => {
+    const knownPlayerIds = new Set(knownPlayers.map((player) => player.id))
+    setAssignments((prev) => pruneAssignmentsForKnownPlayers(prev, knownPlayerIds))
+  }, [])
+
   return {
     assignments,
     spent: getSpent(assignments),
@@ -183,5 +220,6 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     undraftPlayer,
     updatePrice,
     clearRoster,
+    pruneUnknownPlayers,
   }
 }

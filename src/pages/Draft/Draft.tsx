@@ -4,7 +4,7 @@
 // which docs/datamodel.md explicitly calls a "UI-layer filter on the
 // existing Position field" rather than something that belongs in utils/.
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { getPlayers } from '../../services/playerService'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useElementHeight } from '../../hooks/useElementHeight'
@@ -36,6 +36,20 @@ function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
   // The player pool comes from the API now, so this load can fail.
   const { data, status, error } = useAsyncData(getPlayers)
   const players = useMemo(() => data ?? [], [data])
+
+  // A RosterAssignment rehydrated from sessionStorage can reference a
+  // playerId the current pool no longer has (e.g. a data refresh removed or
+  // re-identified that player) — this can only be checked once the real
+  // pool has loaded, so it runs here as a one-time correction rather than
+  // as part of reading storage itself (see pruneAssignmentsForKnownPlayers
+  // in useRoster.ts). pruneUnknownPlayers is a stable useCallback and
+  // players/status only change on real transitions, so this fires once per
+  // load rather than every render.
+  useEffect(() => {
+    if (status === 'ready') {
+      roster.pruneUnknownPlayers(players)
+    }
+  }, [status, players, roster.pruneUnknownPlayers])
 
   const visiblePlayers = players.filter(
     (player) =>

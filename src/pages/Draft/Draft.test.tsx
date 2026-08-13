@@ -17,6 +17,7 @@ const roster: UseRosterResult = {
   undraftPlayer: () => {},
   updatePrice: () => {},
   clearRoster: () => {},
+  pruneUnknownPlayers: () => {},
 }
 
 const favorites: UseFavoritesResult = {

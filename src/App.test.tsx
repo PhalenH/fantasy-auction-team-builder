@@ -9,7 +9,7 @@
 // and Postgres (the `server` test project covers the live round trip).
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import App from './App'
 import { mockApi, mockApiErrorResponse, mockApiNetworkFailure, mockApiNeverResolves } from './test/apiMock'
 
@@ -381,5 +381,115 @@ describe('Core User Flow', () => {
       'aria-pressed',
       'true',
     )
+  })
+})
+
+// CLAUDE.md's Session Isolation "Optional enhancement": draft config,
+// roster assignments, and favorites persist to sessionStorage so a page
+// refresh doesn't reset back to Setup. "Refresh" itself is simulated by
+// unmounting and re-rendering <App /> — sessionStorage (unlike React state)
+// survives that, exactly like it survives a real browser refresh.
+describe('sessionStorage persistence', () => {
+  function readStoredSession() {
+    const raw = sessionStorage.getItem('draftSession')
+    expect(raw).not.toBeNull()
+    return JSON.parse(raw as string)
+  }
+
+  it('persists league format, budget, a roster assignment, and a favorite as they change', async () => {
+    await goToDraftPage()
+
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+    fireEvent.click(screen.getByLabelText('Favorite Bijan Robinson'))
+
+    const stored = readStoredSession()
+    expect(stored.leagueFormatId).toBe('regular')
+    expect(stored.budget).toBe(200)
+    expect(stored.kickerEnabled).toBe(true)
+    expect(stored.defenseEnabled).toBe(true)
+    expect(stored.assignments).toEqual(
+      expect.arrayContaining([expect.objectContaining({ playerId: 'p3', pricePaid: 56.5 })]),
+    )
+    expect(stored.favoriteIds).toContain('p4')
+  })
+
+  it('a refresh mid-draft restores the Draft screen (not Setup) with the prior roster, budget, and favorites', async () => {
+    const { unmount } = render(<App />)
+    expect(await screen.findByText('Set Up Your Draft')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Regular' }))
+    fireEvent.click(screen.getByRole('button', { name: '$200' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start Draft' }))
+    await screen.findByLabelText('Draft Christian McCaffrey')
+
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+    fireEvent.click(screen.getByLabelText('Favorite Bijan Robinson'))
+    unmount()
+
+    // Re-mounting is the "refresh": a fresh App instance reading whatever
+    // the first instance left in sessionStorage, with no React state
+    // carried over between the two.
+    render(<App />)
+
+    // Lands directly on Draft — "Set Up Your Draft" never appears. Waiting
+    // on the Roster landmark itself (not just the "Draft" h1, which the
+    // loading skeleton also renders) is what actually waits for the player
+    // pool's async load to finish.
+    const roster = await screen.findByLabelText('Roster')
+    expect(screen.queryByText('Set Up Your Draft')).not.toBeInTheDocument()
+    expect(roster).toHaveTextContent('Christian McCaffrey')
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$56.50') // Spent
+
+    const playerPool = screen.getByLabelText('Player pool')
+    expect(within(playerPool).getByLabelText('Unfavorite Bijan Robinson')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  it('falls back to a fresh Setup screen, without crashing, when the stored session is corrupted JSON', async () => {
+    sessionStorage.setItem('draftSession', '{not valid json')
+
+    expect(() => render(<App />)).not.toThrow()
+    expect(await screen.findByText('Set Up Your Draft')).toBeInTheDocument()
+  })
+
+  it('falls back to a fresh Setup screen when the stored session fails basic shape validation', async () => {
+    // An array, not the expected object shape.
+    sessionStorage.setItem('draftSession', JSON.stringify(['regular', 200]))
+
+    expect(() => render(<App />)).not.toThrow()
+    expect(await screen.findByText('Set Up Your Draft')).toBeInTheDocument()
+  })
+
+  it('drops a persisted roster assignment for a player_id no longer in the player pool, without crashing', async () => {
+    sessionStorage.setItem(
+      'draftSession',
+      JSON.stringify({
+        leagueFormatId: 'regular',
+        budget: 200,
+        kickerEnabled: true,
+        defenseEnabled: true,
+        assignments: [
+          { slotInstanceId: 'regular-rb-0', playerId: 'p3', pricePaid: 56.5 },
+          { slotInstanceId: 'regular-rb-1', playerId: 'no-such-player', pricePaid: 999 },
+        ],
+        favoriteIds: [],
+      }),
+    )
+
+    expect(() => render(<App />)).not.toThrow()
+
+    const roster = await screen.findByLabelText('Roster')
+    // The real assignment survives...
+    expect(roster).toHaveTextContent('Christian McCaffrey')
+    // ...the phantom one is dropped: its price is never counted, and its
+    // slot ends up empty rather than stuck occupied by an unrenderable
+    // player. This is a second, prune-triggered re-render after the pool
+    // first loads (see Draft.tsx), so it needs its own wait rather than a
+    // bare synchronous assertion right after the roster first appears.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Budget')).toHaveTextContent('$56.50') // Spent — 999 excluded
+    })
+    expect(within(roster).getAllByText('Empty').length).toBeGreaterThan(0)
   })
 })

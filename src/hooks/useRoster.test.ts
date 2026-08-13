@@ -7,6 +7,7 @@ import {
   clearAllAssignments,
   computeDraftResult,
   normalizePrice,
+  pruneAssignmentsForKnownPlayers,
   removeAssignment,
   updateAssignmentPrice,
 } from './useRoster'
@@ -250,5 +251,45 @@ describe('clearAllAssignments', () => {
     const cleared = clearAllAssignments(assignments)
     expect(getSpent(cleared)).toBe(0)
     expect(getRemainingBudget(budget, cleared)).toBe(budget)
+  })
+})
+
+describe('pruneAssignmentsForKnownPlayers', () => {
+  const assignments: RosterAssignment[] = [
+    { slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 },
+    { slotInstanceId: 'regular-wr-0', playerId: 'p2', pricePaid: 40 },
+    { slotInstanceId: 'regular-qb-0', playerId: 'stale-player', pricePaid: 12 },
+  ]
+
+  it('drops an assignment whose playerId is not in the known set', () => {
+    const knownPlayerIds = new Set(['p1', 'p2'])
+    expect(pruneAssignmentsForKnownPlayers(assignments, knownPlayerIds)).toEqual([
+      { slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 },
+      { slotInstanceId: 'regular-wr-0', playerId: 'p2', pricePaid: 40 },
+    ])
+  })
+
+  it('is a no-op when every playerId is known', () => {
+    const knownPlayerIds = new Set(['p1', 'p2', 'stale-player'])
+    expect(pruneAssignmentsForKnownPlayers(assignments, knownPlayerIds)).toEqual(assignments)
+  })
+
+  it('drops everything when the known set is empty', () => {
+    expect(pruneAssignmentsForKnownPlayers(assignments, new Set())).toEqual([])
+  })
+
+  it('does not mutate the input array', () => {
+    pruneAssignmentsForKnownPlayers(assignments, new Set(['p1']))
+    expect(assignments).toHaveLength(3)
+  })
+
+  it('recalculates spent/remaining through the same derivation path a fresh assignment uses', () => {
+    const budget = 200
+    expect(getSpent(assignments)).toBe(107) // 55 + 40 + 12
+    expect(getRemainingBudget(budget, assignments)).toBe(93)
+
+    const pruned = pruneAssignmentsForKnownPlayers(assignments, new Set(['p1', 'p2']))
+    expect(getSpent(pruned)).toBe(95) // 55 + 40, stale player's 12 dropped
+    expect(getRemainingBudget(budget, pruned)).toBe(105)
   })
 })

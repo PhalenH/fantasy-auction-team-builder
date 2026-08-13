@@ -26,6 +26,15 @@ beforeEach(() => {
   )
 })
 
+// jsdom's sessionStorage is a real, shared implementation that otherwise
+// persists across every test in a file (only a fresh test *file* gets a
+// fresh jsdom). Now that useDraftSession/useRoster/useFavorites all write
+// to it, a prior test's draft session would silently rehydrate into the
+// next test's <App /> and skip Setup unless cleared here.
+beforeEach(() => {
+  sessionStorage.clear()
+})
+
 // jsdom implements neither at all (not "implements with different
 // behavior" — the globals are simply undefined), which crashes any
 // component using them: Draft.tsx's height-matching (useMediaQuery,
