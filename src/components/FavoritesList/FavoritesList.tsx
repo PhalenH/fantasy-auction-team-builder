@@ -34,7 +34,7 @@ function FavoritesList({
   }
 
   return (
-    <section aria-label="Favorite players">
+    <section aria-label="Favorite players" className="rounded-lg border border-slate-200 bg-parchment p-4 shadow-sm">
       <h2 className="mb-2 text-lg font-semibold text-slate-900">Favorites</h2>
 
       {rejectionMessage && (

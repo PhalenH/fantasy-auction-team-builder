@@ -39,44 +39,56 @@ function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
   // there's nothing meaningful to render until it arrives.
   if (status !== 'ready') {
     return (
-      <div className="mx-auto max-w-5xl space-y-6 p-6">
-        <h1 className="text-2xl font-bold text-slate-900">Draft</h1>
-        <DataStatus status={status} loadingLabel="Loading players…" error={error} />
+      <div className="min-h-screen w-full bg-page-dark spotlight-sweep animate-spotlight-sweep motion-reduce:animate-none p-6">
+        <div className="mx-auto max-w-5xl space-y-6">
+          <h1 className="text-2xl font-bold text-white">Draft</h1>
+          {/* DataStatus's own text colors are tuned for a light background
+              (it's shared with App.tsx's page, which isn't dark) — wrapping
+              it in the same white panel treatment as the ready-state panels
+              below keeps it legible here without touching the shared
+              component or its styling on other pages. */}
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <DataStatus status={status} loadingLabel="Loading players…" error={error} />
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <h1 className="text-2xl font-bold text-slate-900">Draft</h1>
+    <div className="min-h-screen w-full bg-page-dark spotlight-sweep animate-spotlight-sweep motion-reduce:animate-none p-6">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <h1 className="text-2xl font-bold text-white">Draft</h1>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
-        <PlayerList
-          players={visiblePlayers}
-          isPlayerDrafted={roster.isPlayerDrafted}
-          isFavorited={favorites.isFavorited}
-          onDraft={roster.draftPlayer}
-          onToggleFavorite={favorites.toggleFavorite}
-        />
-
-        <div className="space-y-6">
-          <FavoritesList
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
+          <PlayerList
             players={visiblePlayers}
-            favoriteIds={favorites.favoriteIds}
             isPlayerDrafted={roster.isPlayerDrafted}
+            isFavorited={favorites.isFavorited}
             onDraft={roster.draftPlayer}
             onToggleFavorite={favorites.toggleFavorite}
           />
-          <Roster
-            slots={slots}
-            toggles={toggles}
-            assignments={roster.assignments}
-            players={players}
-            onUndraft={roster.undraftPlayer}
-            budget={budget}
-            spent={roster.spent}
-            remaining={roster.remaining}
-          />
+
+          <div className="space-y-6">
+            <FavoritesList
+              players={visiblePlayers}
+              favoriteIds={favorites.favoriteIds}
+              isPlayerDrafted={roster.isPlayerDrafted}
+              onDraft={roster.draftPlayer}
+              onToggleFavorite={favorites.toggleFavorite}
+            />
+            <Roster
+              slots={slots}
+              toggles={toggles}
+              assignments={roster.assignments}
+              players={players}
+              onUndraft={roster.undraftPlayer}
+              onUpdatePrice={roster.updatePrice}
+              budget={budget}
+              spent={roster.spent}
+              remaining={roster.remaining}
+            />
+          </div>
         </div>
       </div>
     </div>

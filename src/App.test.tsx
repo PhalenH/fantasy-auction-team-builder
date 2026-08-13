@@ -238,4 +238,76 @@ describe('Core User Flow', () => {
     )
     expect(screen.getByLabelText('Favorite players')).toHaveTextContent('Christian McCaffrey')
   })
+
+  it('editing a drafted player’s price updates the roster and recalculates the budget immediately', async () => {
+    await goToDraftPage()
+
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    const roster = screen.getByLabelText('Roster')
+    const budgetDisplay = screen.getByLabelText('Budget')
+    expect(roster).toHaveTextContent('$56.50')
+    expect(budgetDisplay).toHaveTextContent('$56.50') // Spent
+    expect(budgetDisplay).toHaveTextContent('$143.50') // Remaining
+
+    fireEvent.click(screen.getByLabelText('Edit price for Christian McCaffrey'))
+    const priceInput = screen.getByLabelText('New price for Christian McCaffrey')
+    fireEvent.change(priceInput, { target: { value: '70' } })
+    fireEvent.keyDown(priceInput, { key: 'Enter' })
+
+    // Same derivation path a fresh assignment uses (getSpent/getRemainingBudget
+    // over RosterAssignment[]) — not a separate, possibly stale local total.
+    expect(roster).toHaveTextContent('$70.00')
+    expect(budgetDisplay).toHaveTextContent('$70.00') // Spent
+    expect(budgetDisplay).toHaveTextContent('$130.00') // Remaining
+  })
+
+  it('rounds a typed price to the nearest $0.50 increment and enforces the $1 minimum', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    fireEvent.click(screen.getByLabelText('Edit price for Christian McCaffrey'))
+    let priceInput = screen.getByLabelText('New price for Christian McCaffrey')
+    fireEvent.change(priceInput, { target: { value: '9.25' } })
+    fireEvent.keyDown(priceInput, { key: 'Enter' })
+    expect(screen.getByLabelText('Roster')).toHaveTextContent('$9.50')
+
+    fireEvent.click(screen.getByLabelText('Edit price for Christian McCaffrey'))
+    priceInput = screen.getByLabelText('New price for Christian McCaffrey')
+    fireEvent.change(priceInput, { target: { value: '0' } })
+    fireEvent.keyDown(priceInput, { key: 'Enter' })
+    expect(screen.getByLabelText('Roster')).toHaveTextContent('$1.00')
+  })
+
+  it('cancels an in-progress price edit on Escape without saving', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    const roster = screen.getByLabelText('Roster')
+    fireEvent.click(screen.getByLabelText('Edit price for Christian McCaffrey'))
+    const priceInput = screen.getByLabelText('New price for Christian McCaffrey')
+    fireEvent.change(priceInput, { target: { value: '999' } })
+    fireEvent.keyDown(priceInput, { key: 'Escape' })
+
+    expect(roster).toHaveTextContent('$56.50')
+    expect(roster).not.toHaveTextContent('$999.00')
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$56.50') // Spent unchanged
+  })
+
+  it('un-drafting after a price edit subtracts the edited price, not the original calculated value', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    fireEvent.click(screen.getByLabelText('Edit price for Christian McCaffrey'))
+    const priceInput = screen.getByLabelText('New price for Christian McCaffrey')
+    fireEvent.change(priceInput, { target: { value: '80' } })
+    fireEvent.keyDown(priceInput, { key: 'Enter' })
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$80.00') // Spent
+
+    fireEvent.click(screen.getByLabelText('Remove Christian McCaffrey from roster'))
+
+    const budgetDisplay = screen.getByLabelText('Budget')
+    expect(budgetDisplay).toHaveTextContent('$0.00') // Spent
+    expect(budgetDisplay).toHaveTextContent('$200.00') // Remaining
+  })
 })

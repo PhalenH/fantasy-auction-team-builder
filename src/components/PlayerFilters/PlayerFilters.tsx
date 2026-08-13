@@ -25,7 +25,7 @@ function PlayerFilters({ positions, selectedPosition, onSelectPosition }: Player
           aria-pressed={selectedPosition === option}
           className={`rounded-full border px-3 py-1 text-xs font-medium ${
             selectedPosition === option
-              ? 'border-indigo-600 bg-indigo-600 text-white'
+              ? 'border-accent-green bg-accent-green text-white'
               : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'
           }`}
         >

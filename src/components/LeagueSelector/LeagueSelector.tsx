@@ -17,7 +17,7 @@ function LeagueSelector({ formats, selectedFormatId, onSelect }: LeagueSelectorP
           aria-pressed={selectedFormatId === format.key}
           className={`rounded-md border px-4 py-2 text-sm font-medium ${
             selectedFormatId === format.key
-              ? 'border-indigo-600 bg-indigo-600 text-white'
+              ? 'border-accent-green bg-accent-green text-white'
               : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
           }`}
         >

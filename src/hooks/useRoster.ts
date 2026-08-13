@@ -63,6 +63,44 @@ export function removeAssignment(
   return assignments.filter((a) => a.playerId !== playerId)
 }
 
+// Manual price editing (docs/manual_bid_entry_plan.md) — a deliberately
+// separate, explicit edit of an *existing* RosterAssignment from the roster
+// view, distinct from computeDraftResult's automatic price_paid at
+// assignment time. Lives here rather than utils/rosterAssignment.ts, which
+// only validates slot eligibility/capacity and has never touched price —
+// this is a pure RosterAssignment[] operation like removeAssignment above,
+// so it belongs next to it.
+
+export const PRICE_INCREMENT = 0.5
+export const MIN_PRICE = 1
+
+// Rounds to the nearest $0.50 increment — the only granularity any
+// calculated combined value ever lands on (docs/manual_bid_entry_plan.md,
+// Validation) — and enforces the $1 minimum. No maximum: consistent with
+// "overspending is allowed, not blocked" (docs/datamodel.md, Budget
+// enforcement). Non-finite input (e.g. a cleared/invalid typed value)
+// clamps to the minimum rather than propagating NaN into spend totals.
+export function normalizePrice(rawPrice: number): number {
+  if (!Number.isFinite(rawPrice)) return MIN_PRICE
+  const rounded = Math.round(rawPrice / PRICE_INCREMENT) * PRICE_INCREMENT
+  return Math.max(MIN_PRICE, rounded)
+}
+
+// Edits the price of the assignment occupying slotInstanceId. A no-op if
+// that slot isn't currently occupied (mirrors removeAssignment's no-op
+// behavior for an untracked id, rather than throwing).
+export function updateAssignmentPrice(
+  assignments: RosterAssignment[],
+  slotInstanceId: string,
+  newPrice: number,
+): RosterAssignment[] {
+  return assignments.map((assignment) =>
+    assignment.slotInstanceId === slotInstanceId
+      ? { ...assignment, pricePaid: normalizePrice(newPrice) }
+      : assignment,
+  )
+}
+
 export interface UseRosterOptions {
   slots: RosterPositionSlot[]
   toggles: ToggleState
@@ -76,6 +114,7 @@ export interface UseRosterResult {
   isPlayerDrafted: (playerId: string) => boolean
   draftPlayer: (player: PlayerWithValuations) => DraftPlayerResult
   undraftPlayer: (playerId: string) => void
+  updatePrice: (slotInstanceId: string, newPrice: number) => void
 }
 
 export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRosterResult {
@@ -100,6 +139,14 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     setAssignments((prev) => removeAssignment(prev, playerId))
   }, [])
 
+  // spent/remaining below are derived from `assignments` on every render, so
+  // routing an edit through this same setAssignments call is what makes the
+  // budget display recalculate immediately — there is no separate price
+  // state to keep in sync.
+  const updatePrice = useCallback((slotInstanceId: string, newPrice: number) => {
+    setAssignments((prev) => updateAssignmentPrice(prev, slotInstanceId, newPrice))
+  }, [])
+
   const isPlayerDrafted = useCallback(
     (playerId: string) => isPlayerAssigned(playerId, assignments),
     [assignments],
@@ -112,5 +159,6 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     isPlayerDrafted,
     draftPlayer,
     undraftPlayer,
+    updatePrice,
   }
 }

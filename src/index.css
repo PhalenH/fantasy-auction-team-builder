@@ -1,6 +1,77 @@
 @import "tailwindcss";
 
 /*
+ * Dark theme for the Setup and Draft pages. Defined as reusable theme
+ * colors, not one-off arbitrary-value classes, so each has one definition
+ * to update instead of drifting across every className that hardcodes the
+ * hex value. page-dark/accent-green are consumed by both pages (Setup.tsx,
+ * LeagueSelector, Draft.tsx, PlayerFilters); parchment is the Draft page's
+ * panel background only — the Setup card stays plain white.
+ */
+@theme {
+  --color-page-dark: #10140e;
+  --color-accent-green: #1b6b45;
+  --color-parchment: #f5f1e8;
+
+  /*
+   * NewsTicker's scroll animation (src/components/NewsTicker). The wrapper
+   * it's applied to renders its text content twice back to back — animating
+   * exactly one copy-width (-50% of the wrapper's own total width) per
+   * cycle is what makes the loop reset invisibly: the frame right before
+   * reset (copy two fully in view) is pixel-identical to the frame right
+   * after (copy one back at its start position).
+   */
+  --animate-ticker: ticker 20s linear infinite;
+
+  /*
+   * Draft page's ambient background glow (src/pages/Draft/Draft.tsx) —
+   * animates background-position back and forth across a radial gradient
+   * that's already 1.6x the element's own size (see .spotlight-sweep
+   * below), so the visible glow drifts side to side rather than the
+   * gradient itself moving/resizing. A theme token rather than an inline
+   * arbitrary value so it gets the same motion-reduce:animate-none handling
+   * as the news ticker's animate-ticker, instead of a second,
+   * differently-shaped prefers-reduced-motion media query.
+   */
+  --animate-spotlight-sweep: spotlight-sweep 16s ease-in-out infinite;
+}
+
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes spotlight-sweep {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/*
+ * The gradient/background-size themselves (as opposed to the animation)
+ * live here as a plain class rather than Tailwind arbitrary-value
+ * utilities — a multi-stop radial-gradient() with commas and percentages
+ * is unreadable jammed into a bg-[...] className. Stacks on top of
+ * bg-page-dark (a background-color, not background-image, so the two don't
+ * conflict): the gradient fades to transparent, letting page-dark show
+ * through everywhere outside the glow. Only ever applied to the Draft
+ * page's outer canvas div, behind the (opaque) panels — never to the
+ * panels themselves, so it can't show through them.
+ */
+.spotlight-sweep {
+  background-image: radial-gradient(circle, rgba(27, 107, 69, 0.4), transparent 25%);
+  background-size: 160% 160%;
+}
+
+/*
  * Defensive baseline: nothing upstream should be constraining #root's
  * width (no other stylesheet touches it), but making that explicit here
  * removes any doubt when diagnosing page-level centering.

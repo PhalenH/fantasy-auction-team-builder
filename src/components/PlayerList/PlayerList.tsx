@@ -51,7 +51,7 @@ function PlayerList({ players, isPlayerDrafted, isFavorited, onDraft, onToggleFa
   }
 
   return (
-    <section aria-label="Player pool">
+    <section aria-label="Player pool" className="rounded-lg border border-slate-200 bg-parchment p-4 shadow-sm">
       <h2 className="mb-2 text-lg font-semibold text-slate-900">Players</h2>
       <PlayerFilters
         positions={positions}
@@ -72,13 +72,13 @@ function PlayerList({ players, isPlayerDrafted, isFavorited, onDraft, onToggleFa
         <table className="w-full min-w-[640px] border-collapse">
           <thead>
             <tr className="text-left text-xs font-semibold uppercase text-slate-500">
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-white py-2 pr-2">Player</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-white py-2 pr-2">Position</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-white py-2 pr-2">Team</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-white py-2 pr-2">Bye</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-white py-2 pr-2">Yahoo</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-white py-2 pr-2">ESPN</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-white py-2 pr-2">Avg</th>
+              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Player</th>
+              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Position</th>
+              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Team</th>
+              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Bye</th>
+              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Yahoo</th>
+              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">ESPN</th>
+              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Avg</th>
             </tr>
           </thead>
           <tbody>

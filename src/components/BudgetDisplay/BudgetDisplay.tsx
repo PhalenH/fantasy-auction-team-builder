@@ -28,8 +28,8 @@ function BudgetDisplay({ budget, spent, remaining }: BudgetDisplayProps) {
           Spent <span className="font-semibold text-slate-900">${spent.toFixed(2)}</span>
         </span>
       </div>
-      <div>
-        Remaining <span className={`font-semibold ${remainingColor}`}>${remaining.toFixed(2)}</span>
+      <div className="font-semibold">
+        Remaining <span className={`font-bold ${remainingColor}`}>${remaining.toFixed(2)}</span>
       </div>
     </div>
   )

@@ -16,6 +16,7 @@ interface RosterProps {
   assignments: RosterAssignment[]
   players: PlayerWithValuations[]
   onUndraft: (playerId: string) => void
+  onUpdatePrice: (slotInstanceId: string, newPrice: number) => void
   budget: number
   spent: number
   remaining: number
@@ -27,6 +28,7 @@ function Roster({
   assignments,
   players,
   onUndraft,
+  onUpdatePrice,
   budget,
   spent,
   remaining,
@@ -34,7 +36,7 @@ function Roster({
   const activeSlots = getActiveSlots(slots, toggles)
 
   return (
-    <section aria-label="Roster">
+    <section aria-label="Roster" className="rounded-lg border border-slate-200 bg-parchment p-4 shadow-sm">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="text-lg font-semibold text-slate-900">Roster</h2>
         <BudgetDisplay budget={budget} spent={spent} remaining={remaining} />
@@ -54,6 +56,7 @@ function Roster({
                 player={player}
                 pricePaid={assignment?.pricePaid ?? null}
                 onUndraft={onUndraft}
+                onUpdatePrice={(newPrice) => onUpdatePrice(slotInstanceId, newPrice)}
               />
             )
           }),

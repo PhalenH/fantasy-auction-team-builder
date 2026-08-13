@@ -117,7 +117,9 @@ The application must prevent assigning a player when no appropriate roster posit
 
 A player must not be selectable for the roster multiple times.
 
-Assignment is fully automatic — there is no manual bid/price entry in MVP. The amount added to team spending is always the player's calculated combined auction value at the moment of assignment (a frozen snapshot; it does not change retroactively if valuations are updated later).
+Assignment is fully automatic — a player is added to a roster slot at their calculated combined auction value the moment they're selected, with no interruption to the selection flow and no manual bid/price entry at assignment time. That value is a frozen snapshot: it does not change retroactively if valuations are updated later (including by a subsequent ingestion run).
+
+Once assigned, the price can be edited afterward from the roster view: a pencil icon on the occupied `RosterSlot` toggles the static price display into an editable stepper (`utils/rosterAssignment.ts`-adjacent `updateAssignmentPrice`, exposed through `hooks/useRoster.ts`) — up/down arrows step by $0.50, the value is also directly typable, confirm on blur/Enter, cancel on Escape without saving. Entered values are normalized to whole-dollar or $0.50 increments with a $1 minimum and no maximum (overspending is allowed here too, same as at assignment). An edited price is just as frozen a snapshot as an auto-calculated one — see docs/manual_bid_entry_plan.md for the full design.
 
 A drafted player can be un-drafted (e.g. by clicking their name in the occupied roster slot). Un-drafting removes the roster assignment, frees the slot, subtracts the player's price from spent so remaining budget updates accordingly, and returns the player to the available pool in its original (non-drafted) state. This does not affect favorited status — favoriting and roster-drafted status remain independent flags per the Favorites section below.
 

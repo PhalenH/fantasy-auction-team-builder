@@ -3,8 +3,14 @@
 // rendering a component or a hook-testing library.
 
 import { describe, expect, it } from 'vitest'
-import { computeDraftResult, removeAssignment } from './useRoster'
+import {
+  computeDraftResult,
+  normalizePrice,
+  removeAssignment,
+  updateAssignmentPrice,
+} from './useRoster'
 import { getCombinedAuctionValue } from '../utils/auctionCalculations'
+import { getRemainingBudget, getSpent } from '../utils/budgetCalculations'
 import { rosterPositionSlots } from '../data/leagueFormats'
 import type { RosterPositionSlot } from '../types/League'
 import type { RosterAssignment } from '../types/Roster'
@@ -135,5 +141,82 @@ describe('removeAssignment', () => {
     ]
     removeAssignment(assignments, 'p1')
     expect(assignments).toHaveLength(1)
+  })
+})
+
+describe('normalizePrice', () => {
+  it('leaves an already-valid whole-dollar or $0.50 value unchanged', () => {
+    expect(normalizePrice(43)).toBe(43)
+    expect(normalizePrice(43.5)).toBe(43.5)
+  })
+
+  it('rounds to the nearest $0.50 increment', () => {
+    expect(normalizePrice(9.2)).toBe(9)
+    expect(normalizePrice(9.4)).toBe(9.5)
+    // Exactly halfway between two increments rounds up, deterministically.
+    expect(normalizePrice(9.25)).toBe(9.5)
+  })
+
+  it('enforces the $1 minimum', () => {
+    expect(normalizePrice(0.5)).toBe(1)
+    expect(normalizePrice(0)).toBe(1)
+    expect(normalizePrice(-20)).toBe(1)
+  })
+
+  it('has no maximum — a very large value passes through untouched (rounded)', () => {
+    expect(normalizePrice(9001)).toBe(9001)
+  })
+
+  it('clamps non-finite input to the minimum instead of propagating NaN', () => {
+    expect(normalizePrice(NaN)).toBe(1)
+    expect(normalizePrice(Infinity)).toBe(1)
+  })
+})
+
+describe('updateAssignmentPrice', () => {
+  const assignments: RosterAssignment[] = [
+    { slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 },
+    { slotInstanceId: 'regular-wr-0', playerId: 'p2', pricePaid: 40 },
+  ]
+
+  it('updates only the assignment occupying the given slot', () => {
+    const result = updateAssignmentPrice(assignments, 'regular-rb-0', 60)
+    expect(result).toEqual([
+      { slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 60 },
+      { slotInstanceId: 'regular-wr-0', playerId: 'p2', pricePaid: 40 },
+    ])
+  })
+
+  it('normalizes the new price the same way normalizePrice does', () => {
+    const result = updateAssignmentPrice(assignments, 'regular-rb-0', 9.25)
+    expect(result.find((a) => a.slotInstanceId === 'regular-rb-0')?.pricePaid).toBe(9.5)
+  })
+
+  it('enforces the $1 minimum through the update path', () => {
+    const result = updateAssignmentPrice(assignments, 'regular-rb-0', 0)
+    expect(result.find((a) => a.slotInstanceId === 'regular-rb-0')?.pricePaid).toBe(1)
+  })
+
+  it('is a no-op when the slot is not currently occupied', () => {
+    expect(updateAssignmentPrice(assignments, 'no-such-slot', 60)).toEqual(assignments)
+  })
+
+  it('does not mutate the input array', () => {
+    updateAssignmentPrice(assignments, 'regular-rb-0', 60)
+    expect(assignments[0].pricePaid).toBe(55)
+  })
+
+  it('recalculates spent/remaining through the same derivation path a fresh assignment uses', () => {
+    // Guards against the price edit accidentally landing in separate local
+    // state instead of the RosterAssignment[] that getSpent/getRemainingBudget
+    // already sum over.
+    const budget = 200
+    const before = getSpent(assignments)
+    expect(before).toBe(95)
+    expect(getRemainingBudget(budget, assignments)).toBe(105)
+
+    const edited = updateAssignmentPrice(assignments, 'regular-rb-0', 75)
+    expect(getSpent(edited)).toBe(115) // 75 + 40
+    expect(getRemainingBudget(budget, edited)).toBe(85)
   })
 })

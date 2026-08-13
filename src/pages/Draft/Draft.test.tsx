@@ -15,6 +15,7 @@ const roster: UseRosterResult = {
   isPlayerDrafted: () => false,
   draftPlayer: () => ({ ok: false, reason: 'no_eligible_slot' }),
   undraftPlayer: () => {},
+  updatePrice: () => {},
 }
 
 const favorites: UseFavoritesResult = {

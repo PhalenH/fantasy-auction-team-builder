@@ -1,3 +1,5 @@
+import { useRef, useState } from 'react'
+import { MIN_PRICE, PRICE_INCREMENT } from '../../hooks/useRoster'
 import { SLOT_BADGE_TINTS } from '../positionColors'
 import type { PlayerWithValuations } from '../../types/Player'
 
@@ -6,9 +8,49 @@ interface RosterSlotProps {
   player: PlayerWithValuations | null
   pricePaid: number | null
   onUndraft: (playerId: string) => void
+  onUpdatePrice: (newPrice: number) => void
 }
 
-function RosterSlot({ slotLabel, player, pricePaid, onUndraft }: RosterSlotProps) {
+// Mirrors <input type="number">'s own valueAsNumber (empty/invalid -> NaN)
+// for the string form draftValue is tracked in below — Number('') would
+// otherwise silently parse as 0, which is a real (if wrong) price.
+function parseDraftValue(value: string): number {
+  if (value.trim() === '') return NaN
+  return Number(value)
+}
+
+function RosterSlot({ slotLabel, player, pricePaid, onUndraft, onUpdatePrice }: RosterSlotProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftValue, setDraftValue] = useState('')
+  // Escape unmounts the focused input as a side effect of leaving edit mode,
+  // and browsers fire a native blur when a focused element is removed —
+  // without this flag, that blur would immediately re-commit right after
+  // Escape already cancelled.
+  const skipNextBlurRef = useRef(false)
+
+  function startEditing() {
+    if (pricePaid === null) return
+    setDraftValue(String(pricePaid))
+    setIsEditing(true)
+  }
+
+  function commit() {
+    const parsed = parseDraftValue(draftValue)
+    // An empty/invalid value on blur or Enter is treated like a cancel —
+    // there's no sensible price to fall back to, and normalizePrice would
+    // otherwise clamp NaN input to the $1 minimum, which reads as a typo
+    // (not a deliberate $1 bid).
+    if (Number.isFinite(parsed)) {
+      onUpdatePrice(parsed)
+    }
+    setIsEditing(false)
+  }
+
+  function cancel() {
+    skipNextBlurRef.current = true
+    setIsEditing(false)
+  }
+
   return (
     // items-stretch (flex's default, made explicit here) is what makes the
     // badge span the full row height below — the badge and the name/bye
@@ -25,7 +67,7 @@ function RosterSlot({ slotLabel, player, pricePaid, onUndraft }: RosterSlotProps
         {slotLabel}
       </span>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 rounded bg-white px-1.5 py-0.5">
         {player ? (
           // group/group-hover + group-focus-within drive the tooltip below:
           // shown on mouse hover of the name AND on keyboard focus, so it's
@@ -54,11 +96,50 @@ function RosterSlot({ slotLabel, player, pricePaid, onUndraft }: RosterSlotProps
           <span className="text-slate-400">Empty</span>
         )}
 
-        {player && (
+        {player && pricePaid !== null && (
           <div className="mt-0.5 flex items-center justify-between text-xs text-slate-500">
             <span>Bye {player.byeWeek}</span>
-            {pricePaid !== null && (
-              <span className="font-medium text-slate-700">${pricePaid.toFixed(2)}</span>
+
+            {isEditing ? (
+              <input
+                type="number"
+                inputMode="decimal"
+                step={PRICE_INCREMENT}
+                min={MIN_PRICE}
+                autoFocus
+                value={draftValue}
+                onChange={(event) => setDraftValue(event.target.value)}
+                onBlur={() => {
+                  if (skipNextBlurRef.current) {
+                    skipNextBlurRef.current = false
+                    return
+                  }
+                  commit()
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    commit()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancel()
+                  }
+                }}
+                aria-label={`New price for ${player.name}`}
+                className="w-16 rounded border border-slate-300 px-1 py-0.5 text-right font-medium text-slate-700"
+              />
+            ) : (
+              <span className="flex items-center gap-1">
+                <span className="font-medium text-slate-700">${pricePaid.toFixed(2)}</span>
+                <button
+                  type="button"
+                  onClick={startEditing}
+                  aria-label={`Edit price for ${player.name}`}
+                  className="leading-none text-slate-400 hover:text-slate-600"
+                >
+                  ✎
+                </button>
+              </span>
             )}
           </div>
         )}
