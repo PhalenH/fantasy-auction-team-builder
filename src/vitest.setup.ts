@@ -25,3 +25,33 @@ beforeEach(() => {
     }),
   )
 })
+
+// jsdom implements neither at all (not "implements with different
+// behavior" — the globals are simply undefined), which crashes any
+// component using them: Draft.tsx's height-matching (useMediaQuery,
+// useElementHeight) needs both. jsdom also doesn't perform real layout
+// (getBoundingClientRect/contentRect are always 0 regardless), so there is
+// no real viewport for matchMedia to evaluate against — reporting no match
+// is the correct behavior here, not a workaround: it exercises the
+// narrow-layout fallback path, which is the only one jsdom could honestly
+// claim anyway.
+beforeEach(() => {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  )
+
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})

@@ -310,4 +310,76 @@ describe('Core User Flow', () => {
     expect(budgetDisplay).toHaveTextContent('$0.00') // Spent
     expect(budgetDisplay).toHaveTextContent('$200.00') // Remaining
   })
+
+  it('clearing the roster (confirmed) un-drafts every player and resets the budget, leaving favorites untouched', async () => {
+    await goToDraftPage()
+
+    const playerPool = screen.getByLabelText('Player pool')
+    // Favorited before drafting, specifically so this test can confirm a
+    // full roster clear leaves favorited status alone — same independence
+    // a single un-draft already has (RosterAssignment and the favorites
+    // id-set are separate state, per CLAUDE.md's Favorites section).
+    fireEvent.click(within(playerPool).getByLabelText('Favorite Christian McCaffrey'))
+    fireEvent.click(within(playerPool).getByLabelText('Draft Christian McCaffrey'))
+    fireEvent.click(within(playerPool).getByLabelText('Draft Bijan Robinson'))
+
+    const roster = screen.getByLabelText('Roster')
+    expect(roster).toHaveTextContent('Christian McCaffrey')
+    expect(roster).toHaveTextContent('Bijan Robinson')
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$109.50') // Spent (56.50 + 53.00)
+
+    fireEvent.click(screen.getByLabelText('Clear roster'))
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('Confirm')
+    expect(dialog).toHaveTextContent('Clear your entire roster?')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+    // Every slot is empty again — not just the two drafted players' names
+    // gone, but no leftover assignment state anywhere in the panel.
+    expect(roster).not.toHaveTextContent('Christian McCaffrey')
+    expect(roster).not.toHaveTextContent('Bijan Robinson')
+    expect(within(roster).getAllByText('Empty').length).toBeGreaterThan(0)
+
+    const budgetDisplay = screen.getByLabelText('Budget')
+    expect(budgetDisplay).toHaveTextContent('$0.00') // Spent
+    expect(budgetDisplay).toHaveTextContent('$200.00') // Remaining
+
+    // Both players return to the available pool.
+    expect(within(playerPool).getByLabelText('Draft Christian McCaffrey')).not.toBeDisabled()
+    expect(within(playerPool).getByLabelText('Draft Bijan Robinson')).not.toBeDisabled()
+
+    // Favorited status survives the clear.
+    expect(within(playerPool).getByLabelText('Unfavorite Christian McCaffrey')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByLabelText('Favorite players')).toHaveTextContent('Christian McCaffrey')
+  })
+
+  it('canceling the clear-roster confirmation leaves the roster and favorites untouched', async () => {
+    await goToDraftPage()
+
+    const playerPool = screen.getByLabelText('Player pool')
+    fireEvent.click(within(playerPool).getByLabelText('Favorite Christian McCaffrey'))
+    fireEvent.click(within(playerPool).getByLabelText('Draft Christian McCaffrey'))
+
+    const roster = screen.getByLabelText('Roster')
+    expect(roster).toHaveTextContent('Christian McCaffrey')
+
+    fireEvent.click(screen.getByLabelText('Clear roster'))
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+    // Nothing changed: the roster assignment, the spend, and the favorite
+    // are all exactly as they were before the click.
+    expect(roster).toHaveTextContent('Christian McCaffrey')
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$56.50') // Spent unchanged
+    expect(within(playerPool).getByLabelText('Christian McCaffrey, already drafted')).toBeDisabled()
+    expect(within(playerPool).getByLabelText('Unfavorite Christian McCaffrey')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
 })

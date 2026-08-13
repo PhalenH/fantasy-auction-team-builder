@@ -21,7 +21,7 @@
    * reset (copy two fully in view) is pixel-identical to the frame right
    * after (copy one back at its start position).
    */
-  --animate-ticker: ticker 20s linear infinite;
+  --animate-ticker: ticker 40s linear infinite;
 
   /*
    * Draft page's ambient background glow (src/pages/Draft/Draft.tsx) —

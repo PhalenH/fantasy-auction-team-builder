@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  clearAllAssignments,
   computeDraftResult,
   normalizePrice,
   removeAssignment,
@@ -218,5 +219,36 @@ describe('updateAssignmentPrice', () => {
     const edited = updateAssignmentPrice(assignments, 'regular-rb-0', 75)
     expect(getSpent(edited)).toBe(115) // 75 + 40
     expect(getRemainingBudget(budget, edited)).toBe(85)
+  })
+})
+
+describe('clearAllAssignments', () => {
+  const assignments: RosterAssignment[] = [
+    { slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 },
+    { slotInstanceId: 'regular-wr-0', playerId: 'p2', pricePaid: 40 },
+    { slotInstanceId: 'regular-qb-0', playerId: 'p3', pricePaid: 12 },
+  ]
+
+  it('removes every assignment', () => {
+    expect(clearAllAssignments(assignments)).toEqual([])
+  })
+
+  it('is a no-op on an already-empty roster', () => {
+    expect(clearAllAssignments([])).toEqual([])
+  })
+
+  it('does not mutate the input array', () => {
+    clearAllAssignments(assignments)
+    expect(assignments).toHaveLength(3)
+  })
+
+  it('recalculates spent/remaining to $0 spent / full budget through the same derivation path', () => {
+    const budget = 200
+    expect(getSpent(assignments)).toBe(107) // 55 + 40 + 12
+    expect(getRemainingBudget(budget, assignments)).toBe(93)
+
+    const cleared = clearAllAssignments(assignments)
+    expect(getSpent(cleared)).toBe(0)
+    expect(getRemainingBudget(budget, cleared)).toBe(budget)
   })
 })

@@ -63,6 +63,20 @@ export function removeAssignment(
   return assignments.filter((a) => a.playerId !== playerId)
 }
 
+// "Clear roster" (the Players panel's refresh/reset control) un-drafts
+// every currently-assigned player at once — deliberately expressed as
+// repeated removeAssignment calls rather than a bare `[]`, so it can never
+// drift from what a single un-draft does (e.g. if removeAssignment ever
+// grows side effects). Converges to [] either way, since every entry gets
+// removed, but this keeps un-drafting-one-player as the single source of
+// truth for what "un-drafted" means.
+export function clearAllAssignments(assignments: RosterAssignment[]): RosterAssignment[] {
+  return assignments.reduce(
+    (remaining, assignment) => removeAssignment(remaining, assignment.playerId),
+    assignments,
+  )
+}
+
 // Manual price editing (docs/manual_bid_entry_plan.md) — a deliberately
 // separate, explicit edit of an *existing* RosterAssignment from the roster
 // view, distinct from computeDraftResult's automatic price_paid at
@@ -115,6 +129,7 @@ export interface UseRosterResult {
   draftPlayer: (player: PlayerWithValuations) => DraftPlayerResult
   undraftPlayer: (playerId: string) => void
   updatePrice: (slotInstanceId: string, newPrice: number) => void
+  clearRoster: () => void
 }
 
 export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRosterResult {
@@ -147,6 +162,13 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     setAssignments((prev) => updateAssignmentPrice(prev, slotInstanceId, newPrice))
   }, [])
 
+  // Same independence from favorites as undraftPlayer above — clearing
+  // every RosterAssignment never touches the favorites id-set, which lives
+  // in a completely separate hook/state.
+  const clearRoster = useCallback(() => {
+    setAssignments((prev) => clearAllAssignments(prev))
+  }, [])
+
   const isPlayerDrafted = useCallback(
     (playerId: string) => isPlayerAssigned(playerId, assignments),
     [assignments],
@@ -160,5 +182,6 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     draftPlayer,
     undraftPlayer,
     updatePrice,
+    clearRoster,
   }
 }

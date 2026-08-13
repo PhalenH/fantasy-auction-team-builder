@@ -58,7 +58,11 @@ function RosterSlot({ slotLabel, player, pricePaid, onUndraft, onUpdatePrice }: 
     // to match however tall the content column ends up being, instead of
     // being sized for a single line and leaving blank space beside a
     // two-line (name + bye) row.
-    <div className="flex items-stretch gap-2 rounded-md border border-slate-200 px-2 py-1 text-sm">
+    <div
+      className={`flex items-stretch gap-2 rounded-md border px-2 py-1 text-sm ${
+        player ? 'border-slate-400' : 'border-slate-200'
+      }`}
+    >
       <span
         className={`flex w-14 shrink-0 items-center justify-center rounded text-center font-mono text-xs font-semibold text-slate-700 ${
           SLOT_BADGE_TINTS[slotLabel] ?? 'bg-slate-100'
@@ -79,7 +83,7 @@ function RosterSlot({ slotLabel, player, pricePaid, onUndraft, onUpdatePrice }: 
               type="button"
               onClick={() => onUndraft(player.id)}
               aria-label={`Remove ${player.name} from roster`}
-              className="block w-full text-left text-slate-900 hover:text-red-600 hover:underline"
+              className="block w-full text-left font-medium text-slate-900 hover:text-red-600 hover:underline"
             >
               {player.name}
             </button>

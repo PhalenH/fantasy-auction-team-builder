@@ -42,6 +42,7 @@ describe('PlayerList position filtering', () => {
         isFavorited={() => false}
         onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
         onToggleFavorite={() => {}}
+        onClearRoster={() => {}}
       />,
     )
 
@@ -92,6 +93,7 @@ describe('PlayerList sorting', () => {
         isFavorited={() => false}
         onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
         onToggleFavorite={() => {}}
+        onClearRoster={() => {}}
       />,
     )
 
@@ -106,6 +108,7 @@ describe('PlayerList sorting', () => {
         isFavorited={() => false}
         onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
         onToggleFavorite={() => {}}
+        onClearRoster={() => {}}
       />,
     )
 
@@ -125,6 +128,7 @@ describe('PlayerList table layout', () => {
         isFavorited={() => false}
         onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
         onToggleFavorite={() => {}}
+        onClearRoster={() => {}}
       />,
     )
 
@@ -154,6 +158,7 @@ describe('PlayerList rejection handling', () => {
         isFavorited={() => false}
         onDraft={onDraft}
         onToggleFavorite={() => {}}
+        onClearRoster={() => {}}
       />,
     )
 
@@ -180,6 +185,7 @@ describe('PlayerList rejection handling', () => {
           isFavorited={() => false}
           onDraft={onDraft}
           onToggleFavorite={() => {}}
+          onClearRoster={() => {}}
         />,
       )
 
@@ -202,6 +208,7 @@ describe('PlayerList rejection handling', () => {
         isFavorited={() => false}
         onDraft={onDraft}
         onToggleFavorite={() => {}}
+        onClearRoster={() => {}}
       />,
     )
 

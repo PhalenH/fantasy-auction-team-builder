@@ -7,6 +7,8 @@
 import { useMemo } from 'react'
 import { getPlayers } from '../../services/playerService'
 import { useAsyncData } from '../../hooks/useAsyncData'
+import { useElementHeight } from '../../hooks/useElementHeight'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 import DataStatus from '../../components/DataStatus/DataStatus'
 import Roster from '../../components/Roster/Roster'
 import PlayerList from '../../components/PlayerList/PlayerList'
@@ -15,6 +17,12 @@ import type { RosterPositionSlot } from '../../types/League'
 import type { ToggleState } from '../../utils/rosterAssignment'
 import type { UseRosterResult } from '../../hooks/useRoster'
 import type { UseFavoritesResult } from '../../hooks/useFavorites'
+
+// Matches Tailwind's default lg breakpoint — the same one Draft's grid uses
+// (grid-cols-1 lg:grid-cols-[1fr_280px]) to switch from stacked to
+// two-column. Kept as one literal so the JS-side "are we in the two-column
+// layout" check can never silently drift from the CSS one.
+const WIDE_LAYOUT_QUERY = '(min-width: 1024px)'
 
 interface DraftProps {
   slots: RosterPositionSlot[]
@@ -34,6 +42,18 @@ function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
       (player.position !== 'K' || toggles.kickerEnabled) &&
       (player.position !== 'DST' || toggles.defenseEnabled),
   )
+
+  // CSS alone can't express "Players' height matches Roster+Favorites'
+  // natural height while scrolling internally": flex-grow/grid stretch only
+  // resolve against an already-definite container height, and nothing on
+  // this page has one (min-h-screen is a minimum, not definite — the page
+  // is meant to scroll normally, not lock to the viewport). Measuring the
+  // Roster+Favorites column here supplies that missing definite number;
+  // isWideLayout gates it to the same breakpoint as the CSS grid so the
+  // stacked/narrow layout's fixed-height behavior is untouched below it.
+  const [rosterColumnRef, rosterColumnHeight] = useElementHeight<HTMLDivElement>()
+  const isWideLayout = useMediaQuery(WIDE_LAYOUT_QUERY)
+  const playerListMatchHeight = isWideLayout ? rosterColumnHeight : undefined
 
   // Roster and Favorites both resolve player names out of this same list, so
   // there's nothing meaningful to render until it arrives.
@@ -67,9 +87,11 @@ function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
             isFavorited={favorites.isFavorited}
             onDraft={roster.draftPlayer}
             onToggleFavorite={favorites.toggleFavorite}
+            onClearRoster={roster.clearRoster}
+            matchHeight={playerListMatchHeight}
           />
 
-          <div className="space-y-6">
+          <div ref={rosterColumnRef} className="space-y-6">
             <FavoritesList
               players={visiblePlayers}
               favoriteIds={favorites.favoriteIds}
