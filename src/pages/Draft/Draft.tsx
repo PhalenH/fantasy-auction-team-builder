@@ -4,19 +4,25 @@
 // which docs/datamodel.md explicitly calls a "UI-layer filter on the
 // existing Position field" rather than something that belongs in utils/.
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getPlayers } from '../../services/playerService'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useElementHeight } from '../../hooks/useElementHeight'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { isRosterComplete } from '../../utils/rosterCompleteness'
+import { buildSavedRosterAssignments } from '../../utils/savedRoster'
+import { resolveSaveName } from '../../hooks/useSavedRosters'
 import DataStatus from '../../components/DataStatus/DataStatus'
 import Roster from '../../components/Roster/Roster'
 import PlayerList from '../../components/PlayerList/PlayerList'
 import FavoritesList from '../../components/FavoritesList/FavoritesList'
-import type { RosterPositionSlot } from '../../types/League'
+import SaveRosterDialog from '../../components/SaveRosterDialog/SaveRosterDialog'
+import type { LeagueFormatKey, LeagueFormatWithSlots, RosterPositionSlot } from '../../types/League'
 import type { ToggleState } from '../../utils/rosterAssignment'
 import type { UseRosterResult } from '../../hooks/useRoster'
 import type { UseFavoritesResult } from '../../hooks/useFavorites'
+import type { UseSavedRostersResult } from '../../hooks/useSavedRosters'
+import type { SavedRoster } from '../../types/Roster'
 
 // Matches Tailwind's default lg breakpoint — the same one Draft's grid uses
 // (grid-cols-1 lg:grid-cols-[1fr_280px]) to switch from stacked to
@@ -28,11 +34,37 @@ interface DraftProps {
   slots: RosterPositionSlot[]
   toggles: ToggleState
   budget: number
+  leagueFormatKey: LeagueFormatKey
+  formats: LeagueFormatWithSlots[]
   roster: UseRosterResult
   favorites: UseFavoritesResult
+  savedRosters: UseSavedRostersResult
+  /**
+   * Set by App.tsx's resume flow once a SavedRoster has been chosen (and
+   * any "discard current progress" confirm() already accepted) — consumed
+   * by the effect below once the player pool it needs to resolve playerIds
+   * against has actually loaded, then cleared via onResumeHydrated.
+   */
+  pendingResume: SavedRoster | null
+  onResumeHydrated: () => void
+  onViewSavedRosters: () => void
+  onGoToSetup: () => void
 }
 
-function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
+function Draft({
+  slots,
+  toggles,
+  budget,
+  leagueFormatKey,
+  formats,
+  roster,
+  favorites,
+  savedRosters,
+  pendingResume,
+  onResumeHydrated,
+  onViewSavedRosters,
+  onGoToSetup,
+}: DraftProps) {
   // The player pool comes from the API now, so this load can fail.
   const { data, status, error } = useAsyncData(getPlayers)
   const players = useMemo(() => data ?? [], [data])
@@ -50,6 +82,64 @@ function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
       roster.pruneUnknownPlayers(players)
     }
   }, [status, players, roster.pruneUnknownPlayers])
+
+  // Resume flow's final step (docs/saved_rosters_plan.md): once the real
+  // pool has loaded, turn the saved snapshot's assignments into live
+  // RosterAssignments — resolving what still matches a live Player and
+  // falling back to the frozen snapshot for what doesn't (see
+  // hydrateAssignmentsFromSavedRoster in useRoster.ts) — then clear
+  // pendingResume so this doesn't refire on every future pool reload.
+  useEffect(() => {
+    if (status === 'ready' && pendingResume) {
+      roster.loadFromSavedRoster(pendingResume.assignments, players)
+      onResumeHydrated()
+    }
+  }, [status, players, pendingResume, roster.loadFromSavedRoster, onResumeHydrated])
+
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
+  const isComplete = isRosterComplete(roster.assignments, slots, toggles)
+
+  function handleSaveClick() {
+    setIsSaveDialogOpen(true)
+  }
+
+  function handleSaveDialogSave(name: string, overwriteId: string | null, clearAfterSave: boolean) {
+    // Excludes the entry being replaced (if any) from the collision check —
+    // overwriting a save with its own unchanged default name isn't a real
+    // collision (see resolveSaveName's doc comment in useSavedRosters.ts).
+    const defaultName = `Draft — ${new Date().toLocaleDateString()}`
+    const existingNames = savedRosters.savedRosters
+      .filter((saved) => saved.id !== overwriteId)
+      .map((saved) => saved.name)
+    const resolvedName = resolveSaveName(name, defaultName, existingNames)
+
+    const assignments = buildSavedRosterAssignments(roster.assignments, slots, toggles, players)
+    const entry = {
+      name: resolvedName,
+      leagueFormatKey,
+      budget,
+      defenseEnabled: toggles.defenseEnabled,
+      kickerEnabled: toggles.kickerEnabled,
+      totalSpent: roster.spent,
+      remainingBudget: roster.remaining,
+      assignments,
+    }
+    if (overwriteId) {
+      savedRosters.overwrite(overwriteId, entry)
+    } else {
+      savedRosters.saveNew(entry)
+    }
+
+    // "Save and clear current roster": the save above already captured the
+    // roster as it stood, so clearing afterward can't lose anything — same
+    // clearRoster() the Players panel's own clear/refresh control uses, so
+    // budget/pool state falls back into sync the identical way.
+    if (clearAfterSave) {
+      roster.clearRoster()
+    }
+
+    setIsSaveDialogOpen(false)
+  }
 
   const visiblePlayers = players.filter(
     (player) =>
@@ -92,7 +182,34 @@ function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
   return (
     <div className="min-h-screen w-full bg-page-dark spotlight-sweep animate-spotlight-sweep motion-reduce:animate-none p-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <h1 className="text-2xl font-bold text-white">Draft</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-white">Draft</h1>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onGoToSetup}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400"
+            >
+              Draft Setup
+            </button>
+            <button
+              type="button"
+              onClick={onViewSavedRosters}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400"
+            >
+              Saved Rosters
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveClick}
+              disabled={!isComplete}
+              aria-label="Save roster"
+              className="rounded-md bg-accent-green px-3 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Save
+            </button>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
           <PlayerList
@@ -127,6 +244,15 @@ function Draft({ slots, toggles, budget, roster, favorites }: DraftProps) {
           </div>
         </div>
       </div>
+
+      <SaveRosterDialog
+        open={isSaveDialogOpen}
+        mode={savedRosters.isAtCap ? 'overwrite' : 'new'}
+        existingRosters={savedRosters.savedRosters}
+        formats={formats}
+        onCancel={() => setIsSaveDialogOpen(false)}
+        onSave={handleSaveDialogSave}
+      />
     </div>
   )
 }

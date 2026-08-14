@@ -20,7 +20,7 @@ import { getCombinedAuctionValue } from '../utils/auctionCalculations'
 import { getRemainingBudget, getSpent } from '../utils/budgetCalculations'
 import { readPersistedSession, writePersistedSessionSlice } from './sessionPersistence'
 import type { RosterPositionSlot } from '../types/League'
-import type { RosterAssignment } from '../types/Roster'
+import type { RosterAssignment, SavedRosterAssignment } from '../types/Roster'
 import type { PlayerWithValuations } from '../types/Player'
 
 export type DraftPlayerResult =
@@ -88,11 +88,46 @@ export function clearAllAssignments(assignments: RosterAssignment[]): RosterAssi
 // loads asynchronously after this hook already mounted with whatever was in
 // storage — so this runs as a follow-up correction once the real pool
 // arrives (see Draft.tsx), not as part of reading storage itself.
+//
+// An assignment carrying unresolvedPlayer is deliberately exempt: that
+// field only ever gets set by hydrateAssignmentsFromSavedRoster below, for
+// a playerId that was already confirmed not to resolve at resume time. It's
+// an intentional frozen snapshot, not mid-session drift, so pruning it here
+// would silently undo the exact resume behavior it exists for.
 export function pruneAssignmentsForKnownPlayers(
   assignments: RosterAssignment[],
   knownPlayerIds: ReadonlySet<string>,
 ): RosterAssignment[] {
-  return assignments.filter((assignment) => knownPlayerIds.has(assignment.playerId))
+  return assignments.filter(
+    (assignment) => assignment.unresolvedPlayer !== undefined || knownPlayerIds.has(assignment.playerId),
+  )
+}
+
+// Resume flow (docs/saved_rosters_plan.md): turns a SavedRoster's frozen
+// assignments back into live RosterAssignment[], resolving each playerId
+// against the current pool. A playerId that no longer resolves still
+// occupies its slot — via the denormalized snapshot carried on the save —
+// rather than being dropped, per the plan's edge-case handling.
+export function hydrateAssignmentsFromSavedRoster(
+  savedAssignments: SavedRosterAssignment[],
+  knownPlayers: PlayerWithValuations[],
+): RosterAssignment[] {
+  const knownPlayerIds = new Set(knownPlayers.map((player) => player.id))
+  return savedAssignments.map((saved) => {
+    if (knownPlayerIds.has(saved.playerId)) {
+      return { slotInstanceId: saved.slotInstanceId, playerId: saved.playerId, pricePaid: saved.pricePaid }
+    }
+    return {
+      slotInstanceId: saved.slotInstanceId,
+      playerId: saved.playerId,
+      pricePaid: saved.pricePaid,
+      unresolvedPlayer: {
+        name: saved.playerName,
+        teamCode: saved.playerTeam,
+        position: saved.playerPosition,
+      },
+    }
+  })
 }
 
 // Manual price editing (docs/manual_bid_entry_plan.md) — a deliberately
@@ -149,6 +184,7 @@ export interface UseRosterResult {
   updatePrice: (slotInstanceId: string, newPrice: number) => void
   clearRoster: () => void
   pruneUnknownPlayers: (knownPlayers: PlayerWithValuations[]) => void
+  loadFromSavedRoster: (savedAssignments: SavedRosterAssignment[], knownPlayers: PlayerWithValuations[]) => void
 }
 
 export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRosterResult {
@@ -211,6 +247,17 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     setAssignments((prev) => pruneAssignmentsForKnownPlayers(prev, knownPlayerIds))
   }, [])
 
+  // Resume flow: wholesale-replaces the current roster with a saved one —
+  // deliberately not merged with whatever was already drafted, matching
+  // "resuming will discard the in-progress draft" (see App.tsx's
+  // confirm() gate before this is ever called).
+  const loadFromSavedRoster = useCallback(
+    (savedAssignments: SavedRosterAssignment[], knownPlayers: PlayerWithValuations[]) => {
+      setAssignments(hydrateAssignmentsFromSavedRoster(savedAssignments, knownPlayers))
+    },
+    [],
+  )
+
   return {
     assignments,
     spent: getSpent(assignments),
@@ -221,5 +268,6 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     updatePrice,
     clearRoster,
     pruneUnknownPlayers,
+    loadFromSavedRoster,
   }
 }

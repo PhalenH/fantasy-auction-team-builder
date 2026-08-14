@@ -1,11 +1,22 @@
 import { useRef, useState } from 'react'
 import { MIN_PRICE, PRICE_INCREMENT } from '../../hooks/useRoster'
 import { SLOT_BADGE_TINTS } from '../positionColors'
-import type { PlayerWithValuations } from '../../types/Player'
+
+// The subset of a player Roster.tsx can actually supply for display here —
+// either a real PlayerWithValuations (structurally compatible, so it's
+// passed straight through) or a synthesized stand-in built from a
+// RosterAssignment's unresolvedPlayer snapshot, which has no byeWeek since
+// that was never part of what a SavedRoster denormalizes. See
+// docs/saved_rosters_plan.md's resume-flow edge case.
+export interface RosterSlotPlayer {
+  id: string
+  name: string
+  byeWeek: number | null
+}
 
 interface RosterSlotProps {
   slotLabel: string
-  player: PlayerWithValuations | null
+  player: RosterSlotPlayer | null
   pricePaid: number | null
   onUndraft: (playerId: string) => void
   onUpdatePrice: (newPrice: number) => void
@@ -102,7 +113,7 @@ function RosterSlot({ slotLabel, player, pricePaid, onUndraft, onUpdatePrice }: 
 
         {player && pricePaid !== null && (
           <div className="mt-0.5 flex items-center justify-between text-xs text-slate-500">
-            <span>Bye {player.byeWeek}</span>
+            <span>Bye {player.byeWeek ?? '—'}</span>
 
             {isEditing ? (
               <input

@@ -7,6 +7,7 @@ import Draft from './Draft'
 import { mockApi, mockApiErrorResponse, mockApiNetworkFailure, mockApiNeverResolves } from '../../test/apiMock'
 import type { UseRosterResult } from '../../hooks/useRoster'
 import type { UseFavoritesResult } from '../../hooks/useFavorites'
+import type { UseSavedRostersResult } from '../../hooks/useSavedRosters'
 
 const roster: UseRosterResult = {
   assignments: [],
@@ -18,6 +19,7 @@ const roster: UseRosterResult = {
   updatePrice: () => {},
   clearRoster: () => {},
   pruneUnknownPlayers: () => {},
+  loadFromSavedRoster: () => {},
 }
 
 const favorites: UseFavoritesResult = {
@@ -26,14 +28,29 @@ const favorites: UseFavoritesResult = {
   toggleFavorite: () => {},
 }
 
+const savedRosters: UseSavedRostersResult = {
+  savedRosters: [],
+  isAtCap: false,
+  saveNew: () => {},
+  overwrite: () => {},
+  deleteSavedRoster: () => {},
+}
+
 function renderDraft() {
   return render(
     <Draft
       slots={[]}
       toggles={{ kickerEnabled: true, defenseEnabled: true }}
       budget={200}
+      leagueFormatKey="regular"
+      formats={[]}
       roster={roster}
       favorites={favorites}
+      savedRosters={savedRosters}
+      pendingResume={null}
+      onResumeHydrated={() => {}}
+      onViewSavedRosters={() => {}}
+      onGoToSetup={() => {}}
     />,
   )
 }
