@@ -30,6 +30,14 @@ const PLAYER_LIST_MAX_HEIGHT = '720px'
 
 interface PlayerListProps {
   players: PlayerWithValuations[]
+  /**
+   * Which positions the active format's FLEX slot(s) accept — see
+   * utils/rosterAssignment.ts's getFlexEligiblePositions, computed by
+   * Draft.tsx from the active format's slots. Backs both the FLEX filter
+   * button's presence (PlayerFilters) and its filter predicate below, since
+   * FLEX isn't itself a Position code that player.position can match.
+   */
+  flexEligiblePositions: PositionCode[]
   isPlayerDrafted: (playerId: string) => boolean
   isFavorited: (playerId: string) => boolean
   onDraft: (player: PlayerWithValuations) => DraftPlayerResult
@@ -47,6 +55,7 @@ interface PlayerListProps {
 
 function PlayerList({
   players,
+  flexEligiblePositions,
   isPlayerDrafted,
   isFavorited,
   onDraft,
@@ -54,13 +63,17 @@ function PlayerList({
   onClearRoster,
   matchHeight,
 }: PlayerListProps) {
-  const [selectedPosition, setSelectedPosition] = useState<PositionCode | 'ALL'>('ALL')
+  const [selectedPosition, setSelectedPosition] = useState<PositionCode | 'ALL' | 'FLEX'>('ALL')
   const [rejectionMessage, setRejectionMessage] = useState<string | null>(null)
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false)
 
   const positions = Array.from(new Set(players.map((p) => p.position)))
   const filtered =
-    selectedPosition === 'ALL' ? players : players.filter((p) => p.position === selectedPosition)
+    selectedPosition === 'ALL'
+      ? players
+      : selectedPosition === 'FLEX'
+        ? players.filter((p) => flexEligiblePositions.includes(p.position))
+        : players.filter((p) => p.position === selectedPosition)
 
   // Default sort: highest combined auction value first. Not user-
   // toggleable — this is the only order the table renders in. Players with
@@ -133,6 +146,7 @@ function PlayerList({
       </div>
       <PlayerFilters
         positions={positions}
+        flexEligible={flexEligiblePositions.length > 0}
         selectedPosition={selectedPosition}
         onSelectPosition={setSelectedPosition}
       />

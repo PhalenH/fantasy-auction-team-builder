@@ -30,6 +30,15 @@ interface SetupProps {
   onRequestBudgetChange: (budget: number | null) => void
   onRequestKickerChange: (enabled: boolean) => void
   onRequestDefenseChange: (enabled: boolean) => void
+  /**
+   * The same live roster.assignments.length > 0 check already driving the
+   * format/budget/toggle mid-draft guard (App.tsx's requireConfirmIfActiveDraft)
+   * — reused here purely for the primary button's label, not a separate
+   * flag to keep in sync. It falls back to "Start Draft" for free the
+   * instant a guarded change is confirmed and clearRoster() runs, the same
+   * way the guard's own no-op check does.
+   */
+  hasInProgressRoster: boolean
 }
 
 function Setup({
@@ -41,6 +50,7 @@ function Setup({
   onRequestBudgetChange,
   onRequestKickerChange,
   onRequestDefenseChange,
+  hasInProgressRoster,
 }: SetupProps) {
   const { leagueFormatId, budget, kickerEnabled, defenseEnabled } = draftSession
 
@@ -68,7 +78,32 @@ function Setup({
   // Same parse the field always used (empty -> null, otherwise Number()) —
   // just applied at commit time now instead of on every keystroke.
   function commitCustomBudget() {
+    // What the field would show if it were freshly synced from the
+    // committed budget right now — i.e. "" whenever a preset is active,
+    // per the display rule below. If the field already reads exactly this
+    // (nothing typed, or a prior revert already put it back here — see the
+    // end of this function), there is nothing to commit: bail out before
+    // even parsing, rather than reparsing blank text as "clear the budget
+    // to null" just because a preset happens to display as blank here.
+    // Without this, a redundant blur after a cancelled commit would
+    // reparse that blank display as a *new* change request and re-open the
+    // guard — even though nothing about the committed budget ever changed.
+    const currentDisplay = isCustomBudget ? String(budget) : ''
+    if (customBudgetText === currentDisplay) return
+
     onRequestBudgetChange(customBudgetText.trim() === '' ? null : Number(customBudgetText))
+
+    // Revert the displayed text back to whatever's actually committed right
+    // now (budget/isCustomBudget, still the pre-commit values in this
+    // closure). If onRequestBudgetChange applied immediately, the sync
+    // effect above fires right after and overwrites this with the *new*
+    // committed value once that prop actually lands — so this line only
+    // "sticks" when the guard deferred the change behind ConfirmDialog
+    // (App.tsx's requireConfirmIfActiveDraft). Cancelling there never
+    // touches `budget`, so there's no prop change left to resync from, and
+    // this is what puts the rejected typed value back to the real
+    // committed one instead of leaving it displayed.
+    setCustomBudgetText(currentDisplay)
   }
 
   return (
@@ -168,7 +203,7 @@ function Setup({
               onClick={onStartDraft}
               className="rounded-md bg-accent-green px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Start Draft
+              {hasInProgressRoster ? 'Resume Draft' : 'Start Draft'}
             </button>
           </div>
         </div>

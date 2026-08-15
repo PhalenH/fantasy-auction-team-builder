@@ -1,0 +1,33 @@
+/*
+ * Ambient background decoration — see FloatingDots.tsx's header comment.
+ * Kept in its own plain CSS file rather than index.css's shared @theme
+ * tokens (unlike the ticker/spotlight animations there): this experimental
+ * addition is meant to be trivial to pull back out later if it doesn't earn
+ * its place, so its whole footprint — keyframes included — stays local to
+ * this one component folder instead of touching a file other pages depend
+ * on.
+ */
+
+@keyframes floating-dots-drift {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(var(--dx));
+  }
+}
+
+.floating-dot {
+  position: absolute;
+  border-radius: 9999px;
+  animation-name: floating-dots-drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-dot {
+    animation: none;
+  }
+}

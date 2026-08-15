@@ -38,6 +38,7 @@ describe('PlayerList position filtering', () => {
     render(
       <PlayerList
         players={multiPositionPlayers}
+        flexEligiblePositions={[]}
         isPlayerDrafted={() => false}
         isFavorited={() => false}
         onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
@@ -60,6 +61,65 @@ describe('PlayerList position filtering', () => {
     expect(screen.getByText('Test RB')).toBeInTheDocument()
     expect(screen.getByText('Test WR')).toBeInTheDocument()
     expect(screen.getByText('Test QB')).toBeInTheDocument()
+  })
+})
+
+describe('PlayerList FLEX filter', () => {
+  const players: PlayerWithValuations[] = [
+    { ...player, id: 'qb1', name: 'Test QB', position: 'QB' },
+    { ...player, id: 'rb1', name: 'Test RB', position: 'RB' },
+    { ...player, id: 'wr1', name: 'Test WR', position: 'WR' },
+    { ...player, id: 'te1', name: 'Test TE', position: 'TE' },
+  ]
+
+  function renderList(flexEligiblePositions: PlayerWithValuations['position'][]) {
+    return render(
+      <PlayerList
+        players={players}
+        flexEligiblePositions={flexEligiblePositions}
+        isPlayerDrafted={() => false}
+        isFavorited={() => false}
+        onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
+        onToggleFavorite={() => {}}
+        onClearRoster={() => {}}
+      />,
+    )
+  }
+
+  it('does not show a FLEX button when the format has no FLEX-eligible positions', () => {
+    renderList([])
+    expect(screen.queryByRole('button', { name: 'FLEX' })).not.toBeInTheDocument()
+  })
+
+  it('shows a FLEX button and filters to the given eligible positions when the format has one', () => {
+    renderList(['RB', 'WR', 'TE'])
+    expect(screen.getByRole('button', { name: 'FLEX' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'FLEX' }))
+    expect(screen.getByText('Test RB')).toBeInTheDocument()
+    expect(screen.getByText('Test WR')).toBeInTheDocument()
+    expect(screen.getByText('Test TE')).toBeInTheDocument()
+    // QB is not part of this format's FLEX eligibility, so it's excluded —
+    // this couldn't be right if the filter matched on player.position
+    // === 'FLEX' (which would never match anything at all), confirming it
+    // really is filtering via flexEligiblePositions.
+    expect(screen.queryByText('Test QB')).not.toBeInTheDocument()
+  })
+
+  it('only includes positions actually eligible for this format\'s FLEX slot, not every non-QB position', () => {
+    // A narrower FLEX (RB/WR only, no TE) — TE must be excluded too, not
+    // just QB, confirming the filter isn't secretly "everything but QB".
+    renderList(['RB', 'WR'])
+    fireEvent.click(screen.getByRole('button', { name: 'FLEX' }))
+    expect(screen.getByText('Test RB')).toBeInTheDocument()
+    expect(screen.getByText('Test WR')).toBeInTheDocument()
+    expect(screen.queryByText('Test TE')).not.toBeInTheDocument()
+  })
+
+  it('renders filter buttons in canonical order: ALL, QB, RB, WR, TE, FLEX', () => {
+    renderList(['RB', 'WR', 'TE'])
+    const buttons = screen.getAllByRole('button', { name: /^(ALL|QB|RB|WR|TE|FLEX|K|DST)$/ })
+    expect(buttons.map((b) => b.textContent)).toEqual(['ALL', 'QB', 'RB', 'WR', 'TE', 'FLEX'])
   })
 })
 
@@ -89,6 +149,7 @@ describe('PlayerList sorting', () => {
     render(
       <PlayerList
         players={mixedPlayers}
+        flexEligiblePositions={[]}
         isPlayerDrafted={() => false}
         isFavorited={() => false}
         onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
@@ -104,6 +165,7 @@ describe('PlayerList sorting', () => {
     render(
       <PlayerList
         players={mixedPlayers}
+        flexEligiblePositions={[]}
         isPlayerDrafted={() => false}
         isFavorited={() => false}
         onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
@@ -124,6 +186,7 @@ describe('PlayerList table layout', () => {
     render(
       <PlayerList
         players={[player]}
+        flexEligiblePositions={[]}
         isPlayerDrafted={() => false}
         isFavorited={() => false}
         onDraft={() => ({ ok: true, assignment: { slotInstanceId: 's-0', playerId: 'x', pricePaid: 1 } })}
@@ -154,6 +217,7 @@ describe('PlayerList rejection handling', () => {
     render(
       <PlayerList
         players={[player]}
+        flexEligiblePositions={[]}
         isPlayerDrafted={() => false}
         isFavorited={() => false}
         onDraft={onDraft}
@@ -181,6 +245,7 @@ describe('PlayerList rejection handling', () => {
       const { unmount } = render(
         <PlayerList
           players={[player]}
+          flexEligiblePositions={[]}
           isPlayerDrafted={() => false}
           isFavorited={() => false}
           onDraft={onDraft}
@@ -204,6 +269,7 @@ describe('PlayerList rejection handling', () => {
     render(
       <PlayerList
         players={[player]}
+        flexEligiblePositions={[]}
         isPlayerDrafted={() => false}
         isFavorited={() => false}
         onDraft={onDraft}

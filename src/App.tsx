@@ -187,6 +187,7 @@ function App() {
         onRequestBudgetChange={handleRequestBudgetChange}
         onRequestKickerChange={handleRequestKickerChange}
         onRequestDefenseChange={handleRequestDefenseChange}
+        hasInProgressRoster={roster.assignments.length > 0}
       />
     )
   } else if (currentPage === 'saved') {
@@ -196,9 +197,11 @@ function App() {
         formats={formats}
         onResume={handleResume}
         onDelete={savedRosters.deleteSavedRoster}
+        onRename={savedRosters.renameSavedRoster}
         onBack={() =>
           setCurrentPage(hasActiveDraft(draftSession.leagueFormatId, draftSession.budget) ? 'draft' : 'setup')
         }
+        onGoToSetup={() => setCurrentPage('setup')}
       />
     )
   } else {

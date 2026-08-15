@@ -9,6 +9,7 @@ import {
   readSavedRosters,
   removeSavedRoster,
   resolveSaveName,
+  updateSavedRosterName,
 } from './useSavedRosters'
 import type { SavedRoster } from '../types/Roster'
 
@@ -71,6 +72,32 @@ describe('addSavedRoster / overwriteSavedRoster / removeSavedRoster', () => {
   it('removeSavedRoster is a no-op when the id is not found', () => {
     const existing = [savedRoster({ id: 'a' })]
     expect(removeSavedRoster(existing, 'no-such-id')).toEqual(existing)
+  })
+})
+
+describe('updateSavedRosterName', () => {
+  it('updates only the name of the matching entry, in place', () => {
+    const existing = [savedRoster({ id: 'a', name: 'First' }), savedRoster({ id: 'b', name: 'Second' })]
+    const result = updateSavedRosterName(existing, 'a', 'Renamed')
+    expect(result.map((r) => r.name)).toEqual(['Renamed', 'Second'])
+    expect(result.map((r) => r.id)).toEqual(['a', 'b'])
+  })
+
+  it('leaves every other field untouched', () => {
+    const existing = [savedRoster({ id: 'a' })]
+    const [result] = updateSavedRosterName(existing, 'a', 'Renamed')
+    expect(result).toEqual({ ...existing[0], name: 'Renamed' })
+  })
+
+  it('is a no-op when the id is not found', () => {
+    const existing = [savedRoster({ id: 'a' })]
+    expect(updateSavedRosterName(existing, 'no-such-id', 'Renamed')).toEqual(existing)
+  })
+
+  it('does not mutate the input array', () => {
+    const existing = [savedRoster({ id: 'a', name: 'First' })]
+    updateSavedRosterName(existing, 'a', 'Renamed')
+    expect(existing[0].name).toBe('First')
   })
 })
 

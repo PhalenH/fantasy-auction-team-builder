@@ -5,6 +5,17 @@
 // shared ConfirmDialog (see SavedRosters.tsx) rather than each card owning
 // its own, since only one can ever be open at a time.
 //
+// Rename mirrors RosterSlot's price-editing interaction exactly (same
+// isEditing/draftValue/skipNextBlurRef shape, same blur/Enter-commits,
+// Escape-cancels wiring) — toggles the static name into an editable input.
+// A blank commit is treated as a cancel here too, same as RosterSlot's own
+// blank/invalid-price handling: onRequestRename simply isn't called, so
+// edit mode just closes and the static name re-renders from the unchanged
+// savedRoster.name prop — no separate "revert" step needed. Collision
+// resolution against the other saves' names happens one level up
+// (SavedRosters.tsx), same split SaveRosterDialog/Draft.tsx already use for
+// the save flow's own name resolution.
+//
 // Player list order: matches the Draft page's Roster component (QB, RB,
 // RB, WR, WR, TE, FLEX, DST, then BENCH), not the order players were
 // originally drafted in — via sortSavedRosterAssignments, which reuses the
@@ -13,6 +24,7 @@
 // (passed down from SavedRosters.tsx, which has `formats` already) since
 // SavedRoster only stores the format's key, not its slot config.
 
+import { useRef, useState } from 'react'
 import { sortSavedRosterAssignments } from '../../utils/savedRoster'
 import { SLOT_BADGE_TINTS } from '../positionColors'
 import type { SavedRoster } from '../../types/Roster'
@@ -24,9 +36,17 @@ interface SavedRosterCardProps {
   slots: RosterPositionSlot[]
   onResume: () => void
   onRequestDelete: () => void
+  onRequestRename: (newName: string) => void
 }
 
-function SavedRosterCard({ savedRoster, formatDisplayName, slots, onResume, onRequestDelete }: SavedRosterCardProps) {
+function SavedRosterCard({
+  savedRoster,
+  formatDisplayName,
+  slots,
+  onResume,
+  onRequestDelete,
+  onRequestRename,
+}: SavedRosterCardProps) {
   const savedDate = new Date(savedRoster.savedAt).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
@@ -38,21 +58,88 @@ function SavedRosterCard({ savedRoster, formatDisplayName, slots, onResume, onRe
     defenseEnabled: savedRoster.defenseEnabled,
   })
 
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [draftName, setDraftName] = useState('')
+  // Same reasoning as RosterSlot's identical ref: Escape unmounts the
+  // focused input, and the resulting native blur would otherwise
+  // immediately re-commit right after Escape already cancelled.
+  const skipNextBlurRef = useRef(false)
+
+  function startEditingName() {
+    setDraftName(savedRoster.name)
+    setIsEditingName(true)
+  }
+
+  function commitName() {
+    const trimmed = draftName.trim()
+    // Blank is a no-op, not "clear the name" — there's no sensible default
+    // to fall back to here (unlike the Save dialog's fresh-save flow), so
+    // just leave the existing name in place.
+    if (trimmed !== '') {
+      onRequestRename(trimmed)
+    }
+    setIsEditingName(false)
+  }
+
+  function cancelEditingName() {
+    skipNextBlurRef.current = true
+    setIsEditingName(false)
+  }
+
   return (
     <section
       aria-label={`Saved roster: ${savedRoster.name}`}
       className="flex flex-col rounded-lg border border-slate-200 bg-parchment p-4 shadow-sm"
     >
       <div className="mb-1 flex items-start justify-between gap-2">
-        <h3 className="min-w-0 truncate text-base font-semibold text-slate-900">{savedRoster.name}</h3>
-        <button
-          type="button"
-          onClick={onRequestDelete}
-          aria-label={`Delete ${savedRoster.name}`}
-          className="shrink-0 text-slate-400 hover:text-red-600"
-        >
-          ✕
-        </button>
+        {isEditingName ? (
+          <input
+            type="text"
+            autoFocus
+            value={draftName}
+            onChange={(event) => setDraftName(event.target.value)}
+            onBlur={() => {
+              if (skipNextBlurRef.current) {
+                skipNextBlurRef.current = false
+                return
+              }
+              commitName()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                commitName()
+              } else if (event.key === 'Escape') {
+                event.preventDefault()
+                cancelEditingName()
+              }
+            }}
+            aria-label={`New name for ${savedRoster.name}`}
+            className="min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-base font-semibold text-slate-900"
+          />
+        ) : (
+          <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">{savedRoster.name}</h3>
+        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {!isEditingName && (
+            <button
+              type="button"
+              onClick={startEditingName}
+              aria-label={`Rename ${savedRoster.name}`}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              ✎
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onRequestDelete}
+            aria-label={`Delete ${savedRoster.name}`}
+            className="text-slate-400 hover:text-red-600"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div className="text-xs text-slate-500">

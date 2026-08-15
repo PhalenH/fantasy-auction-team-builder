@@ -103,6 +103,27 @@ export function isPlayerAssigned(
   return currentAssignments.some((a) => a.playerId === playerId)
 }
 
+// (e) which positions the active format's FLEX slot(s) accept — e.g.
+// {RB, WR, TE} today. Backs the player pool's FLEX filter button
+// (PlayerFilters.tsx/PlayerList.tsx): FLEX isn't itself a Position code, so
+// it can't be matched via player.position the way every other filter
+// button is — this derives the equivalent set from RosterPositionSlot
+// config instead, keyed specifically on slotLabel === 'FLEX' (the
+// canonical label docs/datamodel.md uses), not hardcoded to {RB, WR, TE},
+// so it stays correct if a format's FLEX eligibility ever differs. Not
+// toggle-gated by design (unlike getActiveSlots) — every current format's
+// FLEX slot already has toggleKey: null (always active), so filtering
+// through toggles here would be a no-op in practice; deriving straight
+// from the raw slot config keeps this correct without depending on that
+// coincidence.
+export function getFlexEligiblePositions(slots: RosterPositionSlot[]): PositionCode[] {
+  const positions = new Set<PositionCode>()
+  slots
+    .filter((slot) => slot.slotLabel === 'FLEX')
+    .forEach((slot) => slot.eligiblePositions.forEach((position) => positions.add(position)))
+  return Array.from(positions)
+}
+
 export function validateAssignment(
   player: Player,
   slots: RosterPositionSlot[],

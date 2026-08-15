@@ -1,19 +1,31 @@
-// Position filter only. K/DST are hidden from the pool entirely upstream
+// Position filter, rendered in a fixed canonical order (ALL, QB, RB, WR,
+// TE, FLEX, K, DST) rather than whatever incidental order positions happen
+// to appear in the player list. FLEX is included whenever flexEligible is
+// true — derived upstream from the active format's RosterPositionSlot
+// config (see utils/rosterAssignment.ts's getFlexEligiblePositions), not
+// hardcoded here. K/DST are hidden from the pool entirely upstream
 // (Draft page, per docs/datamodel.md's "UI-layer filter on the existing
-// Position field") — this component just renders whatever positions are
-// actually present in the players it's given, so a toggled-off position
-// never appears here without any toggle logic being duplicated.
+// Position field") — this component only shows them when actually present
+// in the supplied `positions`, so a toggled-off position never appears here
+// without any toggle logic being duplicated.
 
 import type { PositionCode } from '../../types/Player'
 
+const CANONICAL_POSITION_ORDER: Array<PositionCode | 'FLEX'> = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DST']
+
 interface PlayerFiltersProps {
   positions: PositionCode[]
-  selectedPosition: PositionCode | 'ALL'
-  onSelectPosition: (position: PositionCode | 'ALL') => void
+  flexEligible: boolean
+  selectedPosition: PositionCode | 'ALL' | 'FLEX'
+  onSelectPosition: (position: PositionCode | 'ALL' | 'FLEX') => void
 }
 
-function PlayerFilters({ positions, selectedPosition, onSelectPosition }: PlayerFiltersProps) {
-  const options: Array<PositionCode | 'ALL'> = ['ALL', ...positions]
+function PlayerFilters({ positions, flexEligible, selectedPosition, onSelectPosition }: PlayerFiltersProps) {
+  const presentPositions = new Set(positions)
+  const options: Array<PositionCode | 'ALL' | 'FLEX'> = [
+    'ALL',
+    ...CANONICAL_POSITION_ORDER.filter((token) => (token === 'FLEX' ? flexEligible : presentPositions.has(token))),
+  ]
 
   return (
     <div className="flex flex-wrap gap-2" role="group" aria-label="Filter players by position">

@@ -3,6 +3,7 @@ import {
   findOpenInstance,
   getActiveSlots,
   getEligibleSlots,
+  getFlexEligiblePositions,
   getSlotInstanceIds,
   isPlayerAssigned,
   validateAssignment,
@@ -81,6 +82,30 @@ describe('getSlotInstanceIds / findOpenInstance', () => {
     const rb = slot({ id: 'rb', count: 1 })
     const assignments: RosterAssignment[] = [{ slotInstanceId: 'rb-0', playerId: 'x', pricePaid: 1 }]
     expect(findOpenInstance(rb, assignments)).toBeNull()
+  })
+})
+
+describe('getFlexEligiblePositions', () => {
+  it('returns the real Regular format FLEX slot eligibility (RB/WR/TE), using production data', () => {
+    expect(getFlexEligiblePositions(regularSlots).sort()).toEqual(['RB', 'TE', 'WR'])
+  })
+
+  it('unions eligiblePositions across every slot labeled FLEX, deduped', () => {
+    const slots = [
+      slot({ id: 'flex-a', slotLabel: 'FLEX', eligiblePositions: ['RB', 'WR'] }),
+      slot({ id: 'flex-b', slotLabel: 'FLEX', eligiblePositions: ['WR', 'TE'] }),
+    ]
+    expect(getFlexEligiblePositions(slots).sort()).toEqual(['RB', 'TE', 'WR'])
+  })
+
+  it('ignores slots not labeled FLEX, even a BENCH slot eligible for every position', () => {
+    const slots = [slot({ id: 'bench', slotLabel: 'BENCH', eligiblePositions: ['QB', 'RB', 'WR', 'TE', 'K', 'DST'] })]
+    expect(getFlexEligiblePositions(slots)).toEqual([])
+  })
+
+  it('returns an empty array when there is no FLEX slot at all', () => {
+    const slots = [slot({ id: 'rb', slotLabel: 'RB', eligiblePositions: ['RB'] })]
+    expect(getFlexEligiblePositions(slots)).toEqual([])
   })
 })
 

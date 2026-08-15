@@ -143,35 +143,37 @@ function SaveRosterDialog({ open, mode, existingRosters, formats, onCancel, onSa
           </div>
         </div>
 
-        <div className="flex divide-x divide-slate-200 border-t border-slate-200">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
+        {/* Stacked full-width actions — primary (filled) on top, the
+            secondary "and clear" variant (outlined, same accent family so
+            it still reads as a Save action) below it, plain/ghost Cancel
+            last. One shared footer for both dialog modes, rather than a
+            mode-specific layout, so 'new' and 'overwrite' never drift into
+            inconsistent button arrangements. */}
+        <div className="flex flex-col gap-2 border-t border-slate-200 p-4">
           <button
             type="button"
             onClick={() => handleSave(false)}
             disabled={!canSave}
-            className="flex-1 py-3 text-sm font-semibold text-accent-green hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+            className="w-full rounded-md bg-accent-green px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             Save
           </button>
+          <button
+            type="button"
+            onClick={() => handleSave(true)}
+            disabled={!canSave}
+            className="w-full rounded-md border border-accent-green px-4 py-2 text-sm font-semibold text-accent-green hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            Save and clear current roster
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="w-full py-1 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
         </div>
-
-        {/* Below the Cancel/Save row and visually secondary (border-t,
-            smaller/muted text) — this saves too, but shouldn't compete with
-            Save as if it were an equally-weighted second primary action. */}
-        <button
-          type="button"
-          onClick={() => handleSave(true)}
-          disabled={!canSave}
-          className="w-full border-t border-slate-200 py-2.5 text-xs font-medium text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
-        >
-          Save and clear current roster
-        </button>
       </div>
     </div>
   )

@@ -11,6 +11,7 @@ import { useElementHeight } from '../../hooks/useElementHeight'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { isRosterComplete } from '../../utils/rosterCompleteness'
 import { buildSavedRosterAssignments } from '../../utils/savedRoster'
+import { getFlexEligiblePositions } from '../../utils/rosterAssignment'
 import { resolveSaveName } from '../../hooks/useSavedRosters'
 import DataStatus from '../../components/DataStatus/DataStatus'
 import Roster from '../../components/Roster/Roster'
@@ -147,6 +148,11 @@ function Draft({
       (player.position !== 'DST' || toggles.defenseEnabled),
   )
 
+  // Backs the player pool's FLEX filter button — derived from the active
+  // format's slot config (not hardcoded to {RB, WR, TE}), same principle
+  // CLAUDE.md's roster-config-as-data rule already applies everywhere else.
+  const flexEligiblePositions = useMemo(() => getFlexEligiblePositions(slots), [slots])
+
   // CSS alone can't express "Players' height matches Roster+Favorites'
   // natural height while scrolling internally": flex-grow/grid stretch only
   // resolve against an already-definite container height, and nothing on
@@ -214,6 +220,7 @@ function Draft({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
           <PlayerList
             players={visiblePlayers}
+            flexEligiblePositions={flexEligiblePositions}
             isPlayerDrafted={roster.isPlayerDrafted}
             isFavorited={favorites.isFavorited}
             onDraft={roster.draftPlayer}

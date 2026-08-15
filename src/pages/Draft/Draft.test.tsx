@@ -34,6 +34,7 @@ const savedRosters: UseSavedRostersResult = {
   saveNew: () => {},
   overwrite: () => {},
   deleteSavedRoster: () => {},
+  renameSavedRoster: () => {},
 }
 
 function renderDraft() {

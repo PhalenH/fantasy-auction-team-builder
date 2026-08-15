@@ -88,6 +88,14 @@ export function removeSavedRoster(rosters: SavedRoster[], id: string): SavedRost
   return rosters.filter((existing) => existing.id !== id)
 }
 
+// SavedRosterCard's rename flow — updates only the name field, in place;
+// savedAt/assignments/everything else about the snapshot is untouched,
+// since renaming isn't re-saving the roster. No-op if id isn't found, same
+// convention as overwriteSavedRoster above.
+export function updateSavedRosterName(rosters: SavedRoster[], id: string, newName: string): SavedRoster[] {
+  return rosters.map((existing) => (existing.id === id ? { ...existing, name: newName } : existing))
+}
+
 // Save dialog's name field starts empty (a placeholder, not a pre-filled
 // default — see SaveRosterDialog.tsx) so a blank submit needs its own
 // fallback: use defaultName ("Draft — {date}"), but disambiguate against
@@ -116,6 +124,7 @@ export interface UseSavedRostersResult {
   saveNew: (roster: NewSavedRosterInput) => void
   overwrite: (id: string, roster: NewSavedRosterInput) => void
   deleteSavedRoster: (id: string) => void
+  renameSavedRoster: (id: string, newName: string) => void
 }
 
 export function useSavedRosters(): UseSavedRostersResult {
@@ -149,11 +158,19 @@ export function useSavedRosters(): UseSavedRostersResult {
     [savedRosters, persist],
   )
 
+  const renameSavedRoster = useCallback(
+    (id: string, newName: string) => {
+      persist(updateSavedRosterName(savedRosters, id, newName))
+    },
+    [savedRosters, persist],
+  )
+
   return {
     savedRosters,
     isAtCap: savedRosters.length >= MAX_SAVED_ROSTERS,
     saveNew,
     overwrite,
     deleteSavedRoster,
+    renameSavedRoster,
   }
 }

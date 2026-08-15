@@ -546,7 +546,9 @@ describe('League setup controls change guard', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Regular' })).toHaveAttribute('aria-pressed', 'true')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start Draft' }))
+    // The roster still has an assignment — cancel left it untouched — so
+    // the primary CTA reads "Resume Draft", not "Start Draft".
+    fireEvent.click(screen.getByRole('button', { name: 'Resume Draft' }))
     const roster = await screen.findByLabelText('Roster')
     expect(roster).toHaveTextContent('Christian McCaffrey')
   })
@@ -722,10 +724,38 @@ describe('Custom budget field commits on blur/Enter, not per keystroke', () => {
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
 
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Start Draft' }))
+    // The roster still has an assignment — cancel left it untouched — so
+    // the primary CTA reads "Resume Draft", not "Start Draft".
+    fireEvent.click(screen.getByRole('button', { name: 'Resume Draft' }))
     const roster = await screen.findByLabelText('Roster')
     expect(roster).toHaveTextContent('Christian McCaffrey')
     expect(screen.getByLabelText('Budget')).toHaveTextContent('$200.00') // Spent — unchanged, still $200 budget
+  })
+
+  it('cancelling reverts the displayed text to the committed budget, not the rejected typed value, and a further blur does not re-open the dialog', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Draft Setup' }))
+    await screen.findByText('Set Up Your Draft')
+
+    const input = screen.getByLabelText('Custom budget amount')
+    fireEvent.change(input, { target: { value: '225' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    // Committed budget is still $200 — a preset, not a custom value — so
+    // the field reverts to empty (matching how it displays $200 normally),
+    // not left showing the rejected "225".
+    expect(input).toHaveValue(null)
+    expect(screen.getByRole('button', { name: '$200' })).toHaveAttribute('aria-pressed', 'true')
+
+    // Blurring again with no further edits must not re-open the dialog —
+    // the committed budget never actually changed, so this is a no-op via
+    // requestSessionChange's equality check.
+    fireEvent.blur(input)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   it('re-blurring without further edits after a confirmed commit does not re-open the dialog', async () => {
@@ -750,6 +780,18 @@ describe('Draft Setup navigation', () => {
     await goToDraftPage()
     fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
 
+    fireEvent.click(screen.getByRole('button', { name: 'Draft Setup' }))
+
+    expect(await screen.findByText('Set Up Your Draft')).toBeInTheDocument()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('is also reachable from the Saved Rosters page, navigating straight to Setup with no confirm dialog, even mid-draft', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Saved Rosters' }))
+    await screen.findByRole('heading', { name: 'Saved Rosters' })
     fireEvent.click(screen.getByRole('button', { name: 'Draft Setup' }))
 
     expect(await screen.findByText('Set Up Your Draft')).toBeInTheDocument()
@@ -845,5 +887,143 @@ describe('Resume flow goes through ConfirmDialog, not window.confirm', () => {
       expect(roster).toHaveTextContent('Christian McCaffrey')
     })
     expect(roster).not.toHaveTextContent('Bijan Robinson')
+  })
+})
+
+describe('Renaming a saved roster', () => {
+  const SAVED_ROSTERS_KEY = 'savedRosters'
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  function seedTwoSavedRosters(): void {
+    function saved(overrides: Partial<SavedRoster>): SavedRoster {
+      return {
+        id: 'save-1',
+        name: 'Team Alpha',
+        savedAt: '2026-08-01T00:00:00Z',
+        leagueFormatKey: 'regular',
+        budget: 200,
+        defenseEnabled: true,
+        kickerEnabled: true,
+        totalSpent: 56.5,
+        remainingBudget: 143.5,
+        assignments: [],
+        ...overrides,
+      }
+    }
+    localStorage.setItem(
+      SAVED_ROSTERS_KEY,
+      JSON.stringify([saved({ id: 'save-1', name: 'Team Alpha' }), saved({ id: 'save-2', name: 'Team Beta' })]),
+    )
+  }
+
+  async function goToSavedRostersPage() {
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Saved Rosters' }))
+    await screen.findByRole('heading', { name: 'Saved Rosters' })
+  }
+
+  it('commits a rename on Enter and persists it', async () => {
+    seedTwoSavedRosters()
+    await goToSavedRostersPage()
+
+    fireEvent.click(screen.getByLabelText('Rename Team Alpha'))
+    const input = screen.getByLabelText('New name for Team Alpha')
+    fireEvent.change(input, { target: { value: 'Renamed Team' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(screen.getByText('Renamed Team')).toBeInTheDocument()
+    expect(screen.queryByText('Team Alpha')).not.toBeInTheDocument()
+
+    const stored = JSON.parse(localStorage.getItem(SAVED_ROSTERS_KEY) as string) as SavedRoster[]
+    expect(stored.find((r) => r.id === 'save-1')?.name).toBe('Renamed Team')
+  })
+
+  it('commits a rename on blur the same way as Enter', async () => {
+    seedTwoSavedRosters()
+    await goToSavedRostersPage()
+
+    fireEvent.click(screen.getByLabelText('Rename Team Alpha'))
+    const input = screen.getByLabelText('New name for Team Alpha')
+    fireEvent.change(input, { target: { value: 'Blur Renamed' } })
+    fireEvent.blur(input)
+
+    expect(screen.getByText('Blur Renamed')).toBeInTheDocument()
+  })
+
+  it('treats a blank commit as a no-op, reverting to the existing name', async () => {
+    seedTwoSavedRosters()
+    await goToSavedRostersPage()
+
+    fireEvent.click(screen.getByLabelText('Rename Team Alpha'))
+    const input = screen.getByLabelText('New name for Team Alpha')
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(screen.getByText('Team Alpha')).toBeInTheDocument()
+    const stored = JSON.parse(localStorage.getItem(SAVED_ROSTERS_KEY) as string) as SavedRoster[]
+    expect(stored.find((r) => r.id === 'save-1')?.name).toBe('Team Alpha')
+  })
+
+  it('Escape cancels without committing, reverting the displayed name', async () => {
+    seedTwoSavedRosters()
+    await goToSavedRostersPage()
+
+    fireEvent.click(screen.getByLabelText('Rename Team Alpha'))
+    const input = screen.getByLabelText('New name for Team Alpha')
+    fireEvent.change(input, { target: { value: 'Should Not Save' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(screen.getByText('Team Alpha')).toBeInTheDocument()
+    expect(screen.queryByText('Should Not Save')).not.toBeInTheDocument()
+    const stored = JSON.parse(localStorage.getItem(SAVED_ROSTERS_KEY) as string) as SavedRoster[]
+    expect(stored.find((r) => r.id === 'save-1')?.name).toBe('Team Alpha')
+  })
+
+  it('accepts a rename that collides with another save\'s name as-is, without disambiguating', async () => {
+    // resolveSaveName only disambiguates its own blank-input fallback path
+    // — an explicitly-typed name (blank already intercepted by
+    // SavedRosterCard before this can ever fire) is used verbatim even if
+    // it collides, same as the Save dialog already does for a typed name.
+    seedTwoSavedRosters()
+    await goToSavedRostersPage()
+
+    fireEvent.click(screen.getByLabelText('Rename Team Alpha'))
+    const input = screen.getByLabelText('New name for Team Alpha')
+    fireEvent.change(input, { target: { value: 'Team Beta' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    const stored = JSON.parse(localStorage.getItem(SAVED_ROSTERS_KEY) as string) as SavedRoster[]
+    expect(stored.find((r) => r.id === 'save-1')?.name).toBe('Team Beta')
+    expect(stored.find((r) => r.id === 'save-2')?.name).toBe('Team Beta')
+  })
+})
+
+describe("Setup page's primary CTA label reflects in-progress roster state", () => {
+  it('reads "Resume Draft" with a non-empty roster, and reverts to "Start Draft" the instant a guarded change clears it', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Draft Setup' }))
+    await screen.findByText('Set Up Your Draft')
+
+    // Non-empty roster.assignments — same live check driving the
+    // format/budget/toggle guard — so the CTA reads "Resume Draft", not
+    // today's default "Start Draft". The click destination doesn't change:
+    // it's still the button that navigates to Draft either way.
+    expect(screen.getByRole('button', { name: 'Resume Draft' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start Draft' })).not.toBeInTheDocument()
+
+    // Confirming a guarded format change runs clearRoster() — no separate
+    // flag to flip, the label falls back to "Start Draft" for free the
+    // instant roster.assignments empties out, the same way the guard's own
+    // no-op check does.
+    fireEvent.click(screen.getByRole('button', { name: 'Regular - 3WR' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Continue' }))
+
+    expect(screen.getByRole('button', { name: 'Start Draft' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Resume Draft' })).not.toBeInTheDocument()
   })
 })
