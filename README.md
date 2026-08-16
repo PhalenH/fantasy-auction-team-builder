@@ -1,6 +1,6 @@
 # Fantasy Auction Draft Assistant
 
-A web app for prepping and running a fantasy football auction draft. It combines ESPN and Yahoo auction values into one player pool, lets you configure your league's roster format and budget, and then run the live draft — selecting players, auto-assigning them to roster slots at a frozen price, tracking spend, and keeping a favorites shortlist — all in one place instead of spreadsheets and browser tabs.
+A web app for prepping and running a mock fantasy football auction draft. It combines ESPN and Yahoo auction values into one player pool, lets you configure your league's roster format and budget, and then run the mock draft — selecting players, auto-assigning them to roster slots at a frozen price, tracking spend, and keeping a favorites shortlist — all in one place instead of spreadsheets and browser tabs.
 
 The app is built to swap its data source without structural rework: the same `Player`/`Team`/`PlayerValuation` tables are populated either by a mock/seed script or by a real ESPN/Yahoo ingestion pipeline, and every layer above the database is written against that shared shape.
 
