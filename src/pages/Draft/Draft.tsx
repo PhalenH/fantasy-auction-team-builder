@@ -244,6 +244,7 @@ function Draft({
               players={players}
               onUndraft={roster.undraftPlayer}
               onUpdatePrice={roster.updatePrice}
+              onMoveOrSwap={roster.moveOrSwap}
               budget={budget}
               spent={roster.spent}
               remaining={roster.remaining}

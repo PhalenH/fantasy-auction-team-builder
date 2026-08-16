@@ -17,6 +17,7 @@ const roster: UseRosterResult = {
   draftPlayer: () => ({ ok: false, reason: 'no_eligible_slot' }),
   undraftPlayer: () => {},
   updatePrice: () => {},
+  moveOrSwap: () => {},
   clearRoster: () => {},
   pruneUnknownPlayers: () => {},
   loadFromSavedRoster: () => {},

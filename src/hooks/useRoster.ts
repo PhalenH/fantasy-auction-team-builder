@@ -168,6 +168,41 @@ export function updateAssignmentPrice(
   )
 }
 
+// Manual move/swap (RosterSlot's swap icon) — moves the assignment at
+// sourceSlotInstanceId to targetSlotInstanceId. If the target is already
+// occupied, the two assignments exchange slotInstanceIds (a swap); if
+// empty, only the source assignment's slotInstanceId changes. playerId and
+// pricePaid are never touched on either side — this only ever moves which
+// slot an assignment is attached to, so budget/spent totals (which already
+// sum pricePaid regardless of slot) are unaffected without any changes
+// there, and this works identically for an assignment carrying an
+// unresolvedPlayer snapshot, since that field is untouched too.
+//
+// A no-op if sourceSlotInstanceId isn't currently occupied, same
+// no-op-on-untracked-id convention as updateAssignmentPrice/removeAssignment
+// above. Eligibility (including the target-slot bidirectional check) is the
+// caller's responsibility — see getSwapTargets in utils/rosterAssignment.ts
+// — this function trusts whatever target it's given and just performs the
+// move. Lives here rather than rosterAssignment.ts for the same reason
+// updateAssignmentPrice does: it's a plain RosterAssignment[] mutation with
+// no slot-eligibility logic of its own, not a validation step.
+export function moveOrSwapAssignment(
+  assignments: RosterAssignment[],
+  sourceSlotInstanceId: string,
+  targetSlotInstanceId: string,
+): RosterAssignment[] {
+  const sourceIndex = assignments.findIndex((a) => a.slotInstanceId === sourceSlotInstanceId)
+  if (sourceIndex === -1) return assignments
+
+  const targetIndex = assignments.findIndex((a) => a.slotInstanceId === targetSlotInstanceId)
+
+  return assignments.map((assignment, index) => {
+    if (index === sourceIndex) return { ...assignment, slotInstanceId: targetSlotInstanceId }
+    if (index === targetIndex) return { ...assignment, slotInstanceId: sourceSlotInstanceId }
+    return assignment
+  })
+}
+
 export interface UseRosterOptions {
   slots: RosterPositionSlot[]
   toggles: ToggleState
@@ -182,6 +217,7 @@ export interface UseRosterResult {
   draftPlayer: (player: PlayerWithValuations) => DraftPlayerResult
   undraftPlayer: (playerId: string) => void
   updatePrice: (slotInstanceId: string, newPrice: number) => void
+  moveOrSwap: (sourceSlotInstanceId: string, targetSlotInstanceId: string) => void
   clearRoster: () => void
   pruneUnknownPlayers: (knownPlayers: PlayerWithValuations[]) => void
   loadFromSavedRoster: (savedAssignments: SavedRosterAssignment[], knownPlayers: PlayerWithValuations[]) => void
@@ -228,6 +264,14 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     setAssignments((prev) => updateAssignmentPrice(prev, slotInstanceId, newPrice))
   }, [])
 
+  // Same reasoning as updatePrice above: routing the move/swap through this
+  // same setAssignments call is what makes budget/spent recalculate (or, in
+  // this case, correctly stay put) immediately — nothing else to keep in
+  // sync.
+  const moveOrSwap = useCallback((sourceSlotInstanceId: string, targetSlotInstanceId: string) => {
+    setAssignments((prev) => moveOrSwapAssignment(prev, sourceSlotInstanceId, targetSlotInstanceId))
+  }, [])
+
   // Same independence from favorites as undraftPlayer above — clearing
   // every RosterAssignment never touches the favorites id-set, which lives
   // in a completely separate hook/state.
@@ -266,6 +310,7 @@ export function useRoster({ slots, toggles, budget }: UseRosterOptions): UseRost
     draftPlayer,
     undraftPlayer,
     updatePrice,
+    moveOrSwap,
     clearRoster,
     pruneUnknownPlayers,
     loadFromSavedRoster,

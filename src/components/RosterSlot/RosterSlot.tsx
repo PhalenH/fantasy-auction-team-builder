@@ -20,6 +20,13 @@ interface RosterSlotProps {
   pricePaid: number | null
   onUndraft: (playerId: string) => void
   onUpdatePrice: (newPrice: number) => void
+  /**
+   * Opens the move/swap picker (Roster.tsx owns the actual dialog/state —
+   * this is just the request). Distinct from both the price row's ✎ (edits
+   * price, doesn't move slots) and from tapping the player's name itself
+   * (undrafts, unchanged).
+   */
+  onRequestSwap: () => void
 }
 
 // Mirrors <input type="number">'s own valueAsNumber (empty/invalid -> NaN)
@@ -30,7 +37,7 @@ function parseDraftValue(value: string): number {
   return Number(value)
 }
 
-function RosterSlot({ slotLabel, player, pricePaid, onUndraft, onUpdatePrice }: RosterSlotProps) {
+function RosterSlot({ slotLabel, player, pricePaid, onUndraft, onUpdatePrice, onRequestSwap }: RosterSlotProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [draftValue, setDraftValue] = useState('')
   // Escape unmounts the focused input as a side effect of leaving edit mode,
@@ -84,28 +91,38 @@ function RosterSlot({ slotLabel, player, pricePaid, onUndraft, onUpdatePrice }: 
 
       <div className="min-w-0 flex-1 rounded bg-white px-1.5 py-0.5">
         {player ? (
-          // group/group-hover + group-focus-within drive the tooltip below:
-          // shown on mouse hover of the name AND on keyboard focus, so it's
-          // not a mouse-only affordance. The tooltip is purely decorative
-          // (aria-hidden) — the button's aria-label already tells screen
-          // readers what the click does.
-          <div className="group relative">
+          <div className="flex items-start justify-between gap-1">
+            {/* group/group-hover + group-focus-within drive the tooltip
+                below: shown on mouse hover of the name AND on keyboard
+                focus, so it's not a mouse-only affordance. The tooltip is
+                purely decorative (aria-hidden) — the button's aria-label
+                already tells screen readers what the click does. */}
+            <div className="group relative min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => onUndraft(player.id)}
+                aria-label={`Remove ${player.name} from roster`}
+                className="block w-full truncate text-left font-medium text-slate-900 hover:text-red-600 hover:underline"
+              >
+                {player.name}
+              </button>
+              <span
+                role="tooltip"
+                aria-hidden="true"
+                className="pointer-events-none absolute bottom-full left-0 z-10 mb-1.5 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-xs font-normal text-white opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+              >
+                Click to remove from roster
+                <span className="absolute left-3 top-full -mt-px h-2 w-2 -translate-x-1/2 rotate-45 bg-slate-800" />
+              </span>
+            </div>
             <button
               type="button"
-              onClick={() => onUndraft(player.id)}
-              aria-label={`Remove ${player.name} from roster`}
-              className="block w-full text-left font-medium text-slate-900 hover:text-red-600 hover:underline"
+              onClick={onRequestSwap}
+              aria-label={`Move ${player.name} to a different slot`}
+              className="shrink-0 leading-none text-slate-400 hover:text-slate-600"
             >
-              {player.name}
+              ⇄
             </button>
-            <span
-              role="tooltip"
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-full left-0 z-10 mb-1.5 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-xs font-normal text-white opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-            >
-              Click to remove from roster
-              <span className="absolute left-3 top-full -mt-px h-2 w-2 -translate-x-1/2 rotate-45 bg-slate-800" />
-            </span>
           </div>
         ) : (
           <span className="text-slate-400">Empty</span>

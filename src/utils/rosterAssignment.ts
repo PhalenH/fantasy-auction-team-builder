@@ -124,6 +124,70 @@ export function getFlexEligiblePositions(slots: RosterPositionSlot[]): PositionC
   return Array.from(positions)
 }
 
+export interface SwapTarget {
+  slotInstanceId: string
+  slot: RosterPositionSlot
+  /** The assignment currently occupying this slot, or null if it's empty. */
+  occupant: RosterAssignment | null
+}
+
+// (f) Enumerate every slot instance a drafted player (currently at
+// sourceSlotInstanceId, in sourceSlot) could move or swap into — backs the
+// manual move/swap feature (RosterSlot's swap icon).
+//
+// An empty target only needs one direction validated: is moverPosition
+// eligible for that slot — getEligibleSlots already answers this.
+//
+// An occupied target needs BOTH directions validated: moverPosition must be
+// eligible for the target slot, AND the occupant currently sitting there
+// must be eligible for sourceSlot — otherwise the swap would strand the
+// occupant somewhere it isn't legally allowed. Reuses getEligibleSlots for
+// that reverse check too (passing a single-slot array), rather than a
+// second parallel eligibility check — e.g. a DST on BENCH is BENCH-eligible
+// (BENCH accepts anything), but getEligibleSlots('DST', [rbSlot]) is empty,
+// so that BENCH slot correctly never appears as a target for a mover
+// currently in an RB slot, even though BENCH itself is RB-eligible.
+//
+// Positions are supplied via positionsBySlotInstanceId rather than looked
+// up from a player pool here, keeping this module fully decoupled from
+// player-pool/display concerns — the caller (Roster.tsx) already resolves
+// each occupied slot's player (live match or a resumed unresolvedPlayer
+// snapshot) for display, and that same resolution covers position too.
+export function getSwapTargets(
+  moverPosition: PositionCode,
+  sourceSlot: RosterPositionSlot,
+  sourceSlotInstanceId: string,
+  slots: RosterPositionSlot[],
+  toggles: ToggleState,
+  currentAssignments: RosterAssignment[],
+  positionsBySlotInstanceId: ReadonlyMap<string, PositionCode>,
+): SwapTarget[] {
+  const activeSlots = getActiveSlots(slots, toggles)
+  const eligibleForMover = getEligibleSlots(moverPosition, activeSlots)
+  const occupantsBySlotInstanceId = new Map(currentAssignments.map((a) => [a.slotInstanceId, a]))
+
+  const targets: SwapTarget[] = []
+  for (const slot of eligibleForMover) {
+    for (const slotInstanceId of getSlotInstanceIds(slot)) {
+      if (slotInstanceId === sourceSlotInstanceId) continue
+
+      const occupant = occupantsBySlotInstanceId.get(slotInstanceId) ?? null
+      if (occupant === null) {
+        targets.push({ slotInstanceId, slot, occupant: null })
+        continue
+      }
+
+      const occupantPosition = positionsBySlotInstanceId.get(slotInstanceId)
+      const occupantEligibleForSource =
+        occupantPosition !== undefined && getEligibleSlots(occupantPosition, [sourceSlot]).length > 0
+      if (occupantEligibleForSource) {
+        targets.push({ slotInstanceId, slot, occupant })
+      }
+    }
+  }
+  return targets
+}
+
 export function validateAssignment(
   player: Player,
   slots: RosterPositionSlot[],

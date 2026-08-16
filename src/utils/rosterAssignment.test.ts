@@ -5,6 +5,7 @@ import {
   getEligibleSlots,
   getFlexEligiblePositions,
   getSlotInstanceIds,
+  getSwapTargets,
   isPlayerAssigned,
   validateAssignment,
   type ToggleState,
@@ -106,6 +107,110 @@ describe('getFlexEligiblePositions', () => {
   it('returns an empty array when there is no FLEX slot at all', () => {
     const slots = [slot({ id: 'rb', slotLabel: 'RB', eligiblePositions: ['RB'] })]
     expect(getFlexEligiblePositions(slots)).toEqual([])
+  })
+})
+
+describe('getSwapTargets', () => {
+  const rb = slot({ id: 'rb', slotLabel: 'RB', eligiblePositions: ['RB'], count: 2, sortOrder: 2 })
+  const flex = slot({ id: 'flex', slotLabel: 'FLEX', eligiblePositions: ['RB', 'WR', 'TE'], count: 1, sortOrder: 5 })
+  const bench = slot({ id: 'bench', slotLabel: 'BENCH', eligiblePositions: ['QB', 'RB', 'WR', 'TE', 'K', 'DST'], count: 2, sortOrder: 8 })
+  const wr = slot({ id: 'wr', slotLabel: 'WR', eligiblePositions: ['WR'], count: 1, sortOrder: 3 })
+  const testSlots = [rb, flex, bench, wr]
+
+  it('includes an empty eligible slot as a target', () => {
+    const assignments: RosterAssignment[] = [{ slotInstanceId: 'rb-0', playerId: 'mover', pricePaid: 10 }]
+    const targets = getSwapTargets('RB', rb, 'rb-0', testSlots, ALL_TOGGLES_ON, assignments, new Map())
+
+    expect(targets).toContainEqual({ slotInstanceId: 'rb-1', slot: rb, occupant: null })
+    expect(targets).toContainEqual({ slotInstanceId: 'flex-0', slot: flex, occupant: null })
+    expect(targets).toContainEqual({ slotInstanceId: 'bench-0', slot: bench, occupant: null })
+    expect(targets).toContainEqual({ slotInstanceId: 'bench-1', slot: bench, occupant: null })
+  })
+
+  it('excludes the mover\'s own current slot instance', () => {
+    const assignments: RosterAssignment[] = [{ slotInstanceId: 'rb-0', playerId: 'mover', pricePaid: 10 }]
+    const targets = getSwapTargets('RB', rb, 'rb-0', testSlots, ALL_TOGGLES_ON, assignments, new Map())
+    expect(targets.some((t) => t.slotInstanceId === 'rb-0')).toBe(false)
+  })
+
+  it('excludes a slot the mover is not eligible for at all', () => {
+    const assignments: RosterAssignment[] = [{ slotInstanceId: 'rb-0', playerId: 'mover', pricePaid: 10 }]
+    const targets = getSwapTargets('RB', rb, 'rb-0', testSlots, ALL_TOGGLES_ON, assignments, new Map())
+    expect(targets.some((t) => t.slotInstanceId === 'wr-0')).toBe(false)
+  })
+
+  it('includes an occupied slot as a swap target when both directions are eligible', () => {
+    const assignments: RosterAssignment[] = [
+      { slotInstanceId: 'rb-0', playerId: 'mover', pricePaid: 10 },
+      { slotInstanceId: 'rb-1', playerId: 'other-rb', pricePaid: 20 },
+    ]
+    const positions = new Map([['rb-1', 'RB' as const]])
+    const targets = getSwapTargets('RB', rb, 'rb-0', testSlots, ALL_TOGGLES_ON, assignments, positions)
+
+    expect(targets).toContainEqual({
+      slotInstanceId: 'rb-1',
+      slot: rb,
+      occupant: { slotInstanceId: 'rb-1', playerId: 'other-rb', pricePaid: 20 },
+    })
+  })
+
+  it('excludes a BENCH slot occupied by a DST when the mover is coming from an RB slot — the DST cannot legally land in RB, so it is not a valid swap target even though BENCH itself is RB-eligible', () => {
+    const assignments: RosterAssignment[] = [
+      { slotInstanceId: 'rb-0', playerId: 'mover', pricePaid: 10 },
+      { slotInstanceId: 'bench-0', playerId: 'bench-dst', pricePaid: 3 },
+    ]
+    const positions = new Map([['bench-0', 'DST' as const]])
+    const targets = getSwapTargets('RB', rb, 'rb-0', testSlots, ALL_TOGGLES_ON, assignments, positions)
+
+    expect(targets.some((t) => t.slotInstanceId === 'bench-0')).toBe(false)
+  })
+
+  it('still includes that same BENCH slot as an empty target once the DST is removed', () => {
+    // Same slot config as the exclusion test above — isolates that the
+    // exclusion is about the DST occupant specifically, not the BENCH slot
+    // itself somehow being unreachable from RB.
+    const assignments: RosterAssignment[] = [{ slotInstanceId: 'rb-0', playerId: 'mover', pricePaid: 10 }]
+    const targets = getSwapTargets('RB', rb, 'rb-0', testSlots, ALL_TOGGLES_ON, assignments, new Map())
+    expect(targets.some((t) => t.slotInstanceId === 'bench-0' && t.occupant === null)).toBe(true)
+  })
+
+  it('includes a BENCH slot occupied by another RB when the mover is coming from an RB slot, since RB is eligible both ways', () => {
+    const assignments: RosterAssignment[] = [
+      { slotInstanceId: 'rb-0', playerId: 'mover', pricePaid: 10 },
+      { slotInstanceId: 'bench-0', playerId: 'bench-rb', pricePaid: 3 },
+    ]
+    const positions = new Map([['bench-0', 'RB' as const]])
+    const targets = getSwapTargets('RB', rb, 'rb-0', testSlots, ALL_TOGGLES_ON, assignments, positions)
+
+    expect(targets).toContainEqual({
+      slotInstanceId: 'bench-0',
+      slot: bench,
+      occupant: { slotInstanceId: 'bench-0', playerId: 'bench-rb', pricePaid: 3 },
+    })
+  })
+
+  it('excludes a toggle-gated slot when its toggle is off, same as getActiveSlots', () => {
+    const dst = slot({ id: 'dst', slotLabel: 'DST', eligiblePositions: ['DST'], toggleKey: 'defense' })
+    const slotsWithDst = [...testSlots, dst]
+    const assignments: RosterAssignment[] = []
+    const toggles: ToggleState = { kickerEnabled: true, defenseEnabled: false }
+    // A hypothetical DST mover with defense off shouldn't see its own
+    // toggled-off slot type as a target — using RB here to keep the mover
+    // eligible for other slots while dst stays inactive.
+    const targets = getSwapTargets('RB', rb, 'rb-0', slotsWithDst, toggles, assignments, new Map())
+    expect(targets.some((t) => t.slot.slotLabel === 'DST')).toBe(false)
+  })
+
+  it('with the real Regular format data, offers the dedicated RB slot and FLEX/BENCH as targets, in canonical slot order', () => {
+    const assignments: RosterAssignment[] = [
+      { slotInstanceId: 'regular-rb-0', playerId: 'mover', pricePaid: 10 },
+    ]
+    const sourceSlot = regularSlots.find((s) => s.slotLabel === 'RB')!
+    const targets = getSwapTargets('RB', sourceSlot, 'regular-rb-0', regularSlots, ALL_TOGGLES_ON, assignments, new Map())
+
+    expect(targets[0]).toMatchObject({ slotInstanceId: 'regular-rb-1', occupant: null })
+    expect(targets.some((t) => t.slotInstanceId === 'regular-flex-0')).toBe(true)
+    expect(targets.some((t) => t.slotInstanceId.startsWith('regular-bench-'))).toBe(true)
   })
 })
 

@@ -1027,3 +1027,93 @@ describe("Setup page's primary CTA label reflects in-progress roster state", () 
     expect(screen.queryByRole('button', { name: 'Resume Draft' })).not.toBeInTheDocument()
   })
 })
+
+// Each RosterSlot renders as a single row; per RosterSlot.tsx's markup the
+// slot badge (its label) is always the row's first text content — used
+// here to identify which specific slot instance (there can be more than
+// one row sharing a label, e.g. two RB rows) ends up holding which player
+// after a move/swap, rather than relying on substring order across the
+// whole roster's concatenated text.
+function findRosterSlotRow(roster: HTMLElement, slotLabel: string, matchIndex = 0): HTMLElement {
+  const rowsContainer = roster.querySelector('.space-y-1')
+  if (!rowsContainer) throw new Error('Roster rows container not found')
+  const rows = Array.from(rowsContainer.children) as HTMLElement[]
+  const matches = rows.filter((row) => row.textContent?.startsWith(slotLabel))
+  const row = matches[matchIndex]
+  if (!row) throw new Error(`No "${slotLabel}" row at index ${matchIndex}`)
+  return row
+}
+
+describe('Move/swap a drafted player to a different roster slot', () => {
+  it('opens a picker listing eligible target slots, excluding the current slot and ineligible slots', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    fireEvent.click(screen.getByLabelText('Move Christian McCaffrey to a different slot'))
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveTextContent('Move Christian McCaffrey')
+    expect(within(dialog).getByText('RB — empty')).toBeInTheDocument()
+    expect(within(dialog).getByText('FLEX — empty')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('BENCH — empty').length).toBeGreaterThan(0)
+    // Never offers a slot RB isn't eligible for at all.
+    expect(within(dialog).queryByText(/^QB —/)).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/^WR —/)).not.toBeInTheDocument()
+  })
+
+  it('moving into an empty slot updates the roster, closes the dialog, and leaves spent unchanged', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$56.50') // Spent
+
+    fireEvent.click(screen.getByLabelText('Move Christian McCaffrey to a different slot'))
+    fireEvent.click(screen.getByText('FLEX — empty'))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const roster = screen.getByLabelText('Roster')
+    expect(findRosterSlotRow(roster, 'FLEX')).toHaveTextContent('Christian McCaffrey')
+    // Both dedicated RB slots are now empty — he moved, he wasn't copied.
+    expect(findRosterSlotRow(roster, 'RB', 0)).toHaveTextContent('Empty')
+    expect(findRosterSlotRow(roster, 'RB', 1)).toHaveTextContent('Empty')
+
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$56.50') // Spent — unchanged, moving isn't re-pricing
+  })
+
+  it('swapping into an occupied slot exchanges both players, each keeping their own price', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey')) // lands in the dedicated RB slot, $56.50
+    fireEvent.click(screen.getByLabelText('Draft Bijan Robinson')) // lands in the other dedicated RB slot, $53.00
+
+    fireEvent.click(screen.getByLabelText('Move Christian McCaffrey to a different slot'))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('RB — Bijan Robinson ($53.00)')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByText('RB — Bijan Robinson ($53.00)'))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const roster = screen.getByLabelText('Roster')
+    // The two players traded slots — a real swap, not a one-way move that
+    // stranded Bijan Robinson.
+    expect(findRosterSlotRow(roster, 'RB', 0)).toHaveTextContent('Bijan Robinson')
+    expect(findRosterSlotRow(roster, 'RB', 0)).toHaveTextContent('$53.00')
+    expect(findRosterSlotRow(roster, 'RB', 1)).toHaveTextContent('Christian McCaffrey')
+    expect(findRosterSlotRow(roster, 'RB', 1)).toHaveTextContent('$56.50')
+
+    // Total spend is unaffected — swapping slots never touches pricePaid.
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$109.50') // Spent — 56.50 + 53.00
+  })
+
+  it('Cancel closes the dialog without changing anything', async () => {
+    await goToDraftPage()
+    fireEvent.click(screen.getByLabelText('Draft Christian McCaffrey'))
+
+    fireEvent.click(screen.getByLabelText('Move Christian McCaffrey to a different slot'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const roster = screen.getByLabelText('Roster')
+    expect(findRosterSlotRow(roster, 'RB', 0)).toHaveTextContent('Christian McCaffrey')
+    expect(screen.getByLabelText('Budget')).toHaveTextContent('$56.50') // Spent — unchanged
+  })
+})

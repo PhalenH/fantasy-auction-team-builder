@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import {
   clearAllAssignments,
   computeDraftResult,
+  moveOrSwapAssignment,
   normalizePrice,
   pruneAssignmentsForKnownPlayers,
   removeAssignment,
@@ -220,6 +221,78 @@ describe('updateAssignmentPrice', () => {
     const edited = updateAssignmentPrice(assignments, 'regular-rb-0', 75)
     expect(getSpent(edited)).toBe(115) // 75 + 40
     expect(getRemainingBudget(budget, edited)).toBe(85)
+  })
+})
+
+describe('moveOrSwapAssignment', () => {
+  it('moves an assignment into an empty target slot, changing only slotInstanceId', () => {
+    const assignments: RosterAssignment[] = [{ slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 }]
+    const result = moveOrSwapAssignment(assignments, 'regular-rb-0', 'regular-flex-0')
+    expect(result).toEqual([{ slotInstanceId: 'regular-flex-0', playerId: 'p1', pricePaid: 55 }])
+  })
+
+  it('swaps slotInstanceIds when the target is occupied, leaving playerId/pricePaid on each assignment untouched', () => {
+    const assignments: RosterAssignment[] = [
+      { slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 },
+      { slotInstanceId: 'regular-bench-0', playerId: 'p2', pricePaid: 5 },
+    ]
+    const result = moveOrSwapAssignment(assignments, 'regular-rb-0', 'regular-bench-0')
+    expect(result).toEqual([
+      { slotInstanceId: 'regular-bench-0', playerId: 'p1', pricePaid: 55 },
+      { slotInstanceId: 'regular-rb-0', playerId: 'p2', pricePaid: 5 },
+    ])
+  })
+
+  it('is a no-op when the source slot is not currently occupied', () => {
+    const assignments: RosterAssignment[] = [{ slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 }]
+    expect(moveOrSwapAssignment(assignments, 'no-such-slot', 'regular-flex-0')).toEqual(assignments)
+  })
+
+  it('does not mutate the input array', () => {
+    const assignments: RosterAssignment[] = [{ slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 }]
+    moveOrSwapAssignment(assignments, 'regular-rb-0', 'regular-flex-0')
+    expect(assignments[0].slotInstanceId).toBe('regular-rb-0')
+  })
+
+  it('leaves other assignments untouched', () => {
+    const assignments: RosterAssignment[] = [
+      { slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 },
+      { slotInstanceId: 'regular-wr-0', playerId: 'p2', pricePaid: 40 },
+    ]
+    const result = moveOrSwapAssignment(assignments, 'regular-rb-0', 'regular-flex-0')
+    expect(result).toContainEqual({ slotInstanceId: 'regular-wr-0', playerId: 'p2', pricePaid: 40 })
+  })
+
+  it('does not change spent/remaining — moving or swapping a slot never touches pricePaid', () => {
+    const budget = 200
+    const assignments: RosterAssignment[] = [
+      { slotInstanceId: 'regular-rb-0', playerId: 'p1', pricePaid: 55 },
+      { slotInstanceId: 'regular-bench-0', playerId: 'p2', pricePaid: 5 },
+    ]
+    const before = getSpent(assignments)
+    const swapped = moveOrSwapAssignment(assignments, 'regular-rb-0', 'regular-bench-0')
+    expect(getSpent(swapped)).toBe(before)
+    expect(getRemainingBudget(budget, swapped)).toBe(getRemainingBudget(budget, assignments))
+  })
+
+  it('works identically for an assignment carrying an unresolvedPlayer snapshot — only slotInstanceId changes', () => {
+    const assignments: RosterAssignment[] = [
+      {
+        slotInstanceId: 'regular-rb-0',
+        playerId: 'ghost',
+        pricePaid: 12,
+        unresolvedPlayer: { name: 'Old Timer', teamCode: 'OLD', position: 'RB' },
+      },
+    ]
+    const result = moveOrSwapAssignment(assignments, 'regular-rb-0', 'regular-flex-0')
+    expect(result).toEqual([
+      {
+        slotInstanceId: 'regular-flex-0',
+        playerId: 'ghost',
+        pricePaid: 12,
+        unresolvedPlayer: { name: 'Old Timer', teamCode: 'OLD', position: 'RB' },
+      },
+    ])
   })
 })
 
