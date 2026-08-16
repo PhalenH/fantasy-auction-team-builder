@@ -196,7 +196,7 @@ describe('PlayerList table layout', () => {
     )
 
     const table = screen.getByRole('table')
-    for (const columnName of ['Player', 'Position', 'Team', 'Bye', 'Yahoo', 'ESPN', 'Avg']) {
+    for (const columnName of ['Player', 'POS', 'Team', 'Bye', 'Yahoo', 'ESPN', 'Avg']) {
       expect(screen.getByRole('columnheader', { name: columnName })).toBeInTheDocument()
     }
 

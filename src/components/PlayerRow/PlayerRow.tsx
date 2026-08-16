@@ -63,13 +63,14 @@ function PlayerRow({ player, isDrafted, isFavorited, onDraft, onToggleFavorite }
               onDraft(player)
             }}
             aria-label={isDrafted ? `${player.name}, already drafted` : `Draft ${player.name}`}
-            className="text-left font-semibold text-slate-900 disabled:cursor-not-allowed"
+            title={player.name}
+            className="max-w-50 truncate text-left font-semibold text-slate-900 disabled:cursor-not-allowed"
           >
             {player.name}
           </button>
 
           {isDrafted && (
-            <span className="inline-block shrink-0 rounded-full bg-slate-300 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-700">
+            <span className="inline-block shrink-0 rounded-full bg-slate-300 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-slate-700">
               Drafted
             </span>
           )}

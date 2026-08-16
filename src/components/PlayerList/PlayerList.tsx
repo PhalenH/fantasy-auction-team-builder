@@ -163,16 +163,16 @@ function PlayerList({
         }`}
         style={matchHeight === undefined ? { maxHeight: PLAYER_LIST_MAX_HEIGHT } : undefined}
       >
-        <table className="w-full min-w-[640px] border-collapse">
+        <table className="w-full min-w-[640px] table-fixed border-collapse">
           <thead>
             <tr className="text-left text-xs font-semibold uppercase text-slate-500">
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Player</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Position</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Team</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Bye</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Yahoo</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">ESPN</th>
-              <th className="sticky top-0 z-10 border-b border-slate-200 bg-parchment py-2 pr-2">Avg</th>
+              <th className="sticky top-0 z-10 w-[36%] border-b border-slate-200 bg-parchment py-2 pr-2">Player</th>
+              <th className="sticky top-0 z-10 w-[9%] border-b border-slate-200 bg-parchment py-2 pr-2">POS</th>
+              <th className="sticky top-0 z-10 w-[8%] border-b border-slate-200 bg-parchment py-2 pr-2">Team</th>
+              <th className="sticky top-0 z-10 w-[7%] border-b border-slate-200 bg-parchment py-2 pr-2">Bye</th>
+              <th className="sticky top-0 z-10 w-[13%] border-b border-slate-200 bg-parchment py-2 pr-2">Yahoo</th>
+              <th className="sticky top-0 z-10 w-[13%] border-b border-slate-200 bg-parchment py-2 pr-2">ESPN</th>
+              <th className="sticky top-0 z-10 w-[14%] border-b border-slate-200 bg-parchment py-2 pr-2">Avg</th>
             </tr>
           </thead>
           <tbody>
