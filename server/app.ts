@@ -11,6 +11,16 @@
 // It is also read-only: only GET routes are registered, and no body parser
 // is mounted (there is no request body to read, and its absence is a
 // structural reminder that this server accepts no writes).
+//
+// PRODUCTION TOPOLOGY: this also serves the built frontend (npm run build's
+// dist/ output) alongside /api/*, so the whole app is one process/service in
+// production (e.g. one Railway service) rather than two that have to be
+// deployed and pointed at each other separately. Dev is unaffected — Vite's
+// own dev server + proxy (vite.config.ts) handles that locally, and never
+// touches this file.
+
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'
 import type { Pool } from 'pg'
@@ -66,17 +76,50 @@ export const API_MOUNTS = [
   { path: '/api/teams', createRouter: createTeamsRouter },
 ] as const
 
+// Resolved relative to this file (not process.cwd()) so it's correct no
+// matter where `npm start`/`tsx server/index.ts` is invoked from. `dist/` is
+// npm run build's output — see vite.config.ts; nothing here builds it.
+const DIST_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist')
+
 export function createApp(db: Pool): Express {
   const app = express()
 
   app.disable('x-powered-by')
 
+  // Serves the built frontend's real files (JS/CSS bundles, favicon,
+  // index.html for GET /). A plain middleware function, not a route/router —
+  // app.test.ts's route-enumeration test only walks layers with a `.route`
+  // or a sub-router's `.handle.stack`, so this stays invisible to it, same
+  // as the SPA fallback below. Calls next() for any path with no matching
+  // file (including every /api/* request, and simply when dist/ doesn't
+  // exist yet, e.g. a test run or a dev checkout that hasn't been built) —
+  // it never throws for a missing file or a missing dist/ directory.
+  app.use(express.static(DIST_DIR))
+
   for (const mount of API_MOUNTS) {
     app.use(mount.path, mount.createRouter(db))
   }
 
+  // SPA fallback: any GET that isn't under /api/* and didn't match a real
+  // file above gets index.html, so a direct load or refresh of a
+  // client-side route (today: none, but this makes it correct if one is
+  // ever added) still resolves instead of 404ing. Registered after
+  // API_MOUNTS and gated on the /api/ prefix so a mistyped or missing
+  // /api/* path still falls through to the JSON 404 below rather than
+  // getting an HTML page back.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api/')) {
+      next()
+      return
+    }
+    res.sendFile(path.join(DIST_DIR, 'index.html'))
+  })
+
   // JSON 404 rather than Express's default HTML page, so a mistyped path
   // (or an attempted write to a real path) reads sensibly to a fetch caller.
+  // In practice now only reached by a non-GET request to an unknown path or
+  // an unmatched /api/* path, since the SPA fallback above claims every
+  // other GET.
   app.use((req: Request, res: Response) => {
     res.status(404).json({
       error: 'not_found',
