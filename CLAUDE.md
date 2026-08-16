@@ -62,6 +62,8 @@ View Favorites in Separate List
 10. Remaining budget calculation
 11. Favorite players
 12. Favorites view
+13. Roster slot move/swap
+14. Saved rosters
 
 ## Player Data Model
 
@@ -123,6 +125,10 @@ Once assigned, the price can be edited afterward from the roster view: a pencil 
 
 A drafted player can be un-drafted (e.g. by clicking their name in the occupied roster slot). Un-drafting removes the roster assignment, frees the slot, subtracts the player's price from spent so remaining budget updates accordingly, and returns the player to the available pool in its original (non-drafted) state. This does not affect favorited status — favoriting and roster-drafted status remain independent flags per the Favorites section below.
 
+A drafted player can also be moved to a different roster slot, via a move/swap (⇄) control on the occupied `RosterSlot`. This opens a picker of every slot instance eligible for that player's position (`getSwapTargets` in `utils/rosterAssignment.ts`) — both empty and occupied eligible slots are valid targets. Moving into an occupied slot swaps the two occupants (each must independently be eligible for the slot it lands in, so a swap never strands either player somewhere illegal); moving into an empty slot just relocates the mover. Either way, the assignment's price and drafted status are untouched — only which slot it occupies changes, so spend/remaining budget are unaffected.
+
+The player-pool panel also offers a "Clear roster" control that un-drafts every currently-assigned player at once (after a confirmation prompt) — equivalent to un-drafting each player individually, with the same effects on budget and the available pool.
+
 The UI should clearly visually distinguish:
 - Available players
 - Drafted/selected players
@@ -154,6 +160,17 @@ Overspending is allowed, not blocked — a player selection is never prevented f
 - Selecting a player for the roster must **not** automatically favorite them.
 - Favorites and roster-drafted status are independent flags on a player.
 
+## Saved Rosters
+
+A third page (Saved Rosters, alongside Setup and Draft) lets the user save a snapshot of a **complete** roster and resume it later:
+
+- **Save is enabled only when the roster is 100% full** — every active slot instance for the current format, including all BENCH slots and any enabled K/DST slots, not just the starting lineup (`isRosterComplete` in `utils/rosterCompleteness.ts`).
+- **Capped at 6 saved rosters.** At the cap, Save opens a picker of the 6 existing saves so the user can choose one to overwrite (optionally renaming it) instead of being blocked.
+- Each save is a frozen, denormalized snapshot — league format, budget, K/DST toggles, total spent/remaining, and every roster assignment (including player name/team/position, not just an id) — so it still renders correctly even if the underlying `Player` row it referenced has since drifted (e.g. a name-formatting mismatch on a later ingestion run).
+- **Saves are resumable, not just viewable.** Choosing "Resume" hydrates an active draft session from the save (format, budget, toggles, and every roster slot) so the user can keep editing it — swap a player, adjust a price, etc. Resuming while a draft is already in progress requires confirmation first, since it discards the in-progress roster.
+- Favorites are **not** part of a save — a save captures roster/budget state only, consistent with favorites being an independent flag per the Favorites section above.
+- Persisted client-side to the browser's `localStorage` — see Session Isolation & State Persistence below for how this differs from (and relates to) the in-progress draft session's own persistence.
+
 ## Architecture Principles
 
 Keep the following concerns separated, both conceptually and in code organization:
@@ -179,22 +196,28 @@ Development starts with the frontend, built entirely against mock data — no Ex
 src/
 ├── components/
 │   ├── PlayerList/
-│   ├── PlayerCard/
+│   ├── PlayerRow/
 │   ├── PlayerFilters/
 │   ├── FavoritesList/
 │   ├── Roster/
 │   ├── RosterSlot/
+│   ├── SwapSlotDialog/       # move/swap target picker, see Draft/Roster Interface
+│   ├── SaveRosterDialog/     # save-new / choose-a-save-to-overwrite, see Saved Rosters
+│   ├── SavedRosterCard/
 │   ├── BudgetDisplay/
 │   └── LeagueSelector/
 │
 ├── pages/
 │   ├── Setup/
-│   └── Draft/
+│   ├── Draft/
+│   └── SavedRosters/
 │
 ├── hooks/
 │   ├── useDraftSession.ts
 │   ├── useRoster.ts
-│   └── useFavorites.ts
+│   ├── useFavorites.ts
+│   ├── useSavedRosters.ts
+│   └── sessionPersistence.ts  # shared sessionStorage read/write, see Session Isolation below
 │
 ├── data/
 │   ├── mockPlayers.ts
@@ -206,26 +229,31 @@ src/
 │   └── Roster.ts
 │
 ├── services/
+│   ├── apiClient.ts     # shared fetch() wrapper
 │   ├── playerService.ts
 │   └── leagueService.ts
 │
 └── utils/
     ├── auctionCalculations.ts
     ├── budgetCalculations.ts
-    └── rosterAssignment.ts
+    ├── rosterAssignment.ts
+    ├── rosterCompleteness.ts  # isRosterComplete(), see Saved Rosters
+    └── savedRoster.ts
 ```
+
+(A handful of other components exist purely for UI polish — e.g. `ConfirmDialog/`, `DataStatus/`, ambient decoration — omitted here since they carry no behavior this spec needs to track.)
 
 Notes on intent, not just layout:
 
-- **`services/`** is the seam between the frontend and the backend. `playerService.ts` / `leagueService.ts` expose the function signatures a component calls (`getPlayers()`, `getLeagueFormats()`); they now call the real Express API (`/api/players`, `/api/league-formats`) via `fetch()`, routed through Vite's dev proxy. No component should import `data/` files directly — those files are no longer bundled into the frontend at all; they're read only by `server/seed/seed.ts` as the single source of truth for seeding Postgres.
+- **`services/`** is the seam between the frontend and the backend. `playerService.ts` / `leagueService.ts` expose the function signatures a component calls (`getPlayers()`, `getLeagueFormats()`); they now call the real Express API (`/api/players`, `/api/league-formats`) via `fetch()` (through the shared `apiClient.ts` wrapper), routed through Vite's dev proxy. No component should import `data/` files directly — those files are no longer bundled into the frontend at all; they're read only by `server/seed/seed.ts` as the single source of truth for seeding Postgres.
 - **`utils/`** holds the three business-logic categories called out under Architecture Principles — auction math, roster assignment rules, budget calculations — as separate, independently testable modules rather than one catch-all file.
-- **`hooks/`** is the client-side home for the session state described under Session Isolation & State Persistence (draft session config, roster assignments, favorites). Components read/write this state through hooks, not local component state, since multiple components share it.
+- **`hooks/`** is the client-side home for the session state described under Session Isolation & State Persistence (draft session config, roster assignments, favorites, and saved rosters). Components read/write this state through hooks, not local component state, since multiple components share it.
 - **`data/leagueFormats.ts`** holds roster/format config as data (mirroring `docs/datamodel.md`'s `LeagueFormat`/`RosterPositionSlot` shape), consistent with the rule that roster configuration must never be hardcoded — that applies even before Postgres exists.
 - A router is not required for two pages (Setup, Draft); prefer simple state-driven conditional rendering unless a real need for URL-based navigation emerges, per "do not introduce unnecessary dependencies."
 
 ## Backend Structure
 
-The backend lives in its own top-level `server/` folder, separate from `src/` — it holds only the database layer (and, next, the Express API); it never holds draft-progress state, per Session Isolation below.
+The backend lives in its own top-level `server/` folder, separate from `src/` — it holds only the database layer and the Express API; it never holds draft-progress state, per Session Isolation below.
 
 ```
 server/
@@ -234,24 +262,28 @@ server/
 │   └── migrate.ts       # SQL migration runner (schema_migrations ledger)
 ├── migrations/
 │   ├── 001_initial_schema.sql
-│   └── 002_team_and_real_ingestion.sql
+│   ├── 002_team_and_real_ingestion.sql
+│   └── 003_team_code_not_null.sql
 ├── seed/
 │   ├── lookups.ts       # Position + ValuationSource + Team rows (see note below)
 │   └── seed.ts          # truncate + insert from src/data/*.ts, one transaction (dev fallback)
-└── ingestion/
-    ├── sources/
-    │   ├── auctionValues.ts   # parses the weekly auction-value CSV
-    │   └── byeWeeks.ts        # parses the bye-week CSV
-    ├── normalize.ts      # name normalization for the Player match key
-    └── run.ts            # orchestrates: upsert Team → upsert Player → upsert PlayerValuation
+├── ingestion/
+│   ├── sources/
+│   │   ├── auctionValues.ts   # parses the weekly auction-value CSV
+│   │   └── byeWeeks.ts        # parses the bye-week CSV
+│   ├── normalize.ts      # name normalization for the Player match key
+│   └── run.ts            # orchestrates: upsert Team → upsert Player → upsert PlayerValuation
+├── routes/               # createXRouter(pool) per mount: players, leagueFormats, teams — all GET-only
+├── services/             # query layer the routes call: playerService, leagueService, teamService
+├── app.ts                # builds the Express app; deliberately doesn't listen, so tests can
+│                          # exercise it over an ephemeral port instead of racing for the real one
+└── index.ts               # binds the port (API_PORT, default 3001), the only file that does
 ```
-
-Extension points for the next pass: `server/index.ts` (Express bootstrap), `server/routes/`, `server/services/` (the query layer the routes call).
 
 Notes on intent:
 
 - **Tooling stays minimal.** Plain SQL migration files plus the `pg` driver — no ORM. The reference data is a handful of small tables with no complex relations or runtime schema evolution, so an ORM would add a dependency, a DSL, and a codegen step to buy nothing here. The migration runner is a small hand-rolled script, not a library.
-- **Primary keys:** DB-generated identity ints, with real uniqueness enforced on the natural/business keys (`league_format.key`, `(league_format_id, slot_label)`, `(player_id, source, season_year)`, `espn_player_id`/`yahoo_player_id`). This matches `docs/datamodel.md`, which lists `id` and `key` as separate fields on `LeagueFormat` — a surrogate key plus a natural key, not one field doing both jobs. Mock-data string ids (`'p1'`, `'regular-qb'`) are intentionally not carried into the database as primary keys, since they're meaningless once real ESPN/Yahoo ingestion replaces the mock data — exactly the "no structural rework" swap-in path the Development Strategy calls for.
+- **Primary keys:** DB-generated identity ints, with real uniqueness enforced on the natural/business keys (`team.code`, `league_format.key`, `(league_format_id, slot_label)`, `(player_id, source, season_year)`, `(player.name, player.position)`). This matches `docs/datamodel.md`'s "Primary key strategy" section — `espn_player_id`/`yahoo_player_id` remain nullable, unique-when-present columns on `Player` for possible future use, but are **not** the active match key under the current CSV-based ingestion pipeline; that's `(name, position)` instead, since the source has no stable ID and never will. `LeagueFormat` also keeps `id` and `key` as separate fields — a surrogate key plus a natural key, not one field doing both jobs. Mock-data string ids (`'p1'`, `'regular-qb'`) are intentionally not carried into the database as primary keys, since they're meaningless once real ESPN/Yahoo ingestion replaces the mock data — exactly the "no structural rework" swap-in path the Development Strategy calls for.
 - **`eligible_positions` is a join table** (`roster_slot_eligible_position`), not an array column, so a typo'd position code is rejected by a foreign key rather than inserted silently — the same referential-integrity reasoning `docs/datamodel.md` already gives for making `Position` a lookup table rather than an enum.
 - **The seed script imports `src/data/*.ts` directly** (via `tsx`, since Node can't execute TypeScript natively) so there is exactly one source of truth for mock data — no hand-authored duplicate to drift out of sync. `Position` and `ValuationSource` rows are the one exception (`server/seed/lookups.ts`): they exist in the frontend only as TypeScript union types, which are erased at runtime, so there's nothing in `src/` to read them from. The seed validates every position/source code it encounters against `lookups.ts` and aborts on a mismatch, to catch drift between the two.
 - **Seeding is truncate-and-reinsert, not upsert**, and that's safe specifically because of Session Isolation: nothing user-owned or session-specific lives in these tables, so they're wholly derived from the source files and fully disposable. Real ingestion (`server/ingestion/`) instead upserts, matching `Player` rows on `(name, position)` — not `espn_player_id`/`yahoo_player_id`, which the real source has none of and never will — per `docs/datamodel.md`'s real-ingestion match keys.
@@ -261,13 +293,15 @@ Notes on intent:
 
 This is a personal tool without user accounts at MVP, but one user's session (or browser tab) must never affect another's. This is achieved structurally, not by adding session-scoping code:
 
-- `drafted` status, `favorited` status, roster assignments, and remaining budget are **never** written to the `Player` table or any other shared/server-side reference data. They exist only as client-side (React) state for the current browser session.
+- `drafted` status, `favorited` status, roster assignments, remaining budget, and saved rosters are **never** written to the `Player` table or any other shared/server-side reference data. They exist only as client-side (React) state (and browser storage, per below) for the current browser session.
 - The Express backend must remain stateless with respect to draft progress. It should only ever serve read-only reference data (players, league formats, roster slot configs) and must not hold any in-memory global variable or cache representing "the current draft." No draft-related write ever reaches the server.
 - Because nothing session-specific is stored server-side, isolation between users/tabs/devices falls out of the architecture automatically — there is no shared mutable state to leak across sessions.
 
-**Optional enhancement:** to avoid losing an in-progress draft on an accidental page refresh, draft state (roster assignments, favorites, budget) can be persisted to the browser's `localStorage`. This keeps state local to that one browser/device — it does not touch the server and does not compromise session isolation, since `localStorage` is never shared across browsers or users. This is not required for MVP and can be added at any point without a backend change.
+**Implemented: in-progress draft state persists to `sessionStorage`.** To avoid losing an in-progress draft on an accidental page refresh, draft state (league format/budget/toggles, roster assignments, favorites) is persisted under a single `draftSession` key (`hooks/sessionPersistence.ts`), read on mount and rewritten on every change. `sessionStorage`, not `localStorage`, is deliberate: it's per-tab and clears on tab/browser close, so a second tab (or a reopened browser) starts a fresh draft rather than inheriting another tab's in-progress one — this keeps the "one session must never affect another's" property above true even across tabs in the same browser, not just across browsers/devices.
 
-When user accounts and saved builds are introduced (Post-MVP), this client-side state maps directly onto server-side, user-owned records (e.g. a `DraftBuild` scoped to a `User`) — no structural rework needed, just relocation.
+**Implemented: saved rosters persist to `localStorage`.** Saved Rosters (see the section above) are a separate, longer-lived persistence tier — each save is a frozen snapshot, deliberately written to `localStorage` (`hooks/useSavedRosters.ts`) instead of `sessionStorage`, since it must survive closing the tab/browser, unlike the in-progress draft session which is meant to reset per tab. Still entirely client-side: `localStorage` is never shared across browsers, devices, or users, so this doesn't compromise session isolation either.
+
+When user accounts are introduced (Post-MVP), this client-side state maps directly onto server-side, user-owned records (e.g. `SavedRoster` scoped to a `User`, enabling cross-device sync) — no structural rework needed, just relocation.
 
 ## Development Rules
 
@@ -278,10 +312,12 @@ When user accounts and saved builds are introduced (Post-MVP), this client-side 
 - Explain architectural changes before making major changes.
 - Write tests for important business logic (auction value calculation, budget math, roster assignment rules, favorites toggling).
 - Keep ESPN/Yahoo data ingestion separate from the core application until the core app is functional on mock data.
+- DDestructive/disruptive actions ... confirm via the shared `ConfirmDialog` component (or, where the action needs its own picker/selection UI, an equivalent custom dialog — e.g. `SaveRosterDialog`'s overwrite picker), not `window.confirm()`.
 
 ## Post-MVP / Future Features
 
 Not part of the initial build — implement only after the above is working:
 
 - User sign-in / authentication
-- Saving and loading a user's team build
+
+(Saving/loading a team build shipped pre-MVP as the client-side Saved Rosters feature — see the Saved Rosters section above. What's still Post-MVP is the server-side, account-scoped, cross-device version of it described at the end of Session Isolation & State Persistence.)

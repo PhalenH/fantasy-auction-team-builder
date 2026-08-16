@@ -1,6 +1,6 @@
 # Data Model — Fantasy Auction Draft Assistant
 
-Entity/relationship design only — no SQL or application code. This revision reflects the pivot to real ESPN/Yahoo auction-value ingestion (weekly CSV + bye-week spreadsheet), which replaces the mock data as the primary source. The Postgres implementation lives at `server/migrations/001_initial_schema.sql` (mock-era schema) plus `server/migrations/002_team_and_real_ingestion.sql` (this round's changes — see "Migration note" below); this doc stays the conceptual reference, `server/seed/seed.ts` remains the mock-data fallback path, and `server/ingestion/` is the new real-data path. See `ingestion_plan_final.md` for the decision history behind this round's changes.
+Entity/relationship design only — no SQL or application code. This revision reflects the pivot to real ESPN/Yahoo auction-value ingestion (weekly CSV + bye-week spreadsheet), which replaces the mock data as the primary source. The Postgres implementation lives at `server/migrations/001_initial_schema.sql` (mock-era schema), `server/migrations/002_team_and_real_ingestion.sql`, and `server/migrations/003_team_code_not_null.sql` (together, this round's changes — see "Migration note" below); this doc stays the conceptual reference, `server/seed/seed.ts` remains the mock-data fallback path, and `server/ingestion/` is the new real-data path. See `ingestion_plan_final.md` for the decision history behind this round's changes.
 
 ## Entities
 
@@ -74,11 +74,19 @@ Combined/calculated value is **not** a stored column — it's derived by a servi
 - `defense_enabled: boolean` — set at league-setup time, same tier/lifecycle as the budget input
 - `kicker_enabled: boolean` — same as above
 
-**RosterAssignment** (frontend list): `{ slot_instance_id, player_id, price_paid }` — determines "drafted" status by membership. `price_paid` is set automatically to the player's calculated combined auction value at the moment of assignment (a frozen snapshot) — there is no manual bid-entry UI in MVP, and the value never changes retroactively if the underlying `PlayerValuation` rows are updated later (including by a subsequent ingestion run).
+**RosterAssignment** (frontend list): `{ slot_instance_id, player_id, price_paid, unresolved_player? }` — determines "drafted" status by membership. `price_paid` is set automatically to the player's calculated combined auction value at the moment of assignment (a frozen snapshot); it can also be edited afterward from the roster view (`RosterSlot`'s pencil control, `updateAssignmentPrice` in `hooks/useRoster.ts`) in whole-dollar/$0.50 increments with a $1 minimum — an edit is just as frozen as the original value, and the price never changes retroactively if the underlying `PlayerValuation` rows are updated later (including by a subsequent ingestion run). See `docs/manual_bid_entry_plan.md`. `slot_instance_id` alone can also change after assignment via the move/swap control (`moveOrSwapAssignment`/`getSwapTargets` in `utils/rosterAssignment.ts` and `hooks/useRoster.ts`) — `player_id` and `price_paid` are untouched by a move/swap. `unresolved_player` (optional `{ name, team_code, position }`) is set only when this assignment was hydrated from a `SavedRoster` whose `player_id` no longer resolves against the live pool at resume time — see the `SavedRoster` entry below.
 
 **Favorites**: a frontend id-set — determines "favorited" status by membership.
 
-Neither `RosterAssignment` nor favorites ever get written back to `Player`, `Team`, or any shared table — see the Session Isolation rule in `CLAUDE.md`.
+**SavedRoster** (frontend list, capped at 6, persisted to `localStorage` rather than `sessionStorage` — see `CLAUDE.md`'s Session Isolation & State Persistence): a frozen, denormalized snapshot of a *complete* roster, distinct from the live `DraftSession`/`RosterAssignment`/`Favorites` state above.
+- `id`, `name`, `saved_at`
+- `league_format_key`, `budget`, `defense_enabled`, `kicker_enabled`
+- `total_spent`, `remaining_budget`
+- `assignments[]`: `{ slot_label, slot_instance_id, player_id, player_name, player_team, player_position, price_paid }` — player name/team/position are denormalized (not just `player_id`), specifically because of the `(name, position)` ingestion match key above: a trade updates `team_code` on the same `Player` row in place, but a name-formatting mismatch on a future ingestion run can create a *new* row for the same real person, so a save must still render correctly months later even if `player_id` has drifted.
+
+A save is only created when every active roster slot instance is filled (`isRosterComplete` in `utils/rosterCompleteness.ts`); it does not capture favorites. Resuming a save hydrates it back into a live `RosterAssignment[]` (`hydrateAssignmentsFromSavedRoster` in `hooks/useRoster.ts`), resolving each `player_id` against the current pool where possible and falling back to the denormalized snapshot (via `unresolved_player`) where it no longer resolves. See `docs/saved_rosters_plan.md`.
+
+Neither `RosterAssignment`, favorites, nor `SavedRoster` ever get written back to `Player`, `Team`, or any shared table — see the Session Isolation rule in `CLAUDE.md`.
 
 ## Relationships
 
@@ -160,7 +168,7 @@ DB-generated identity ints, with real uniqueness enforced on the natural/busines
 
 ## Migration note
 
-This round's schema change (`server/migrations/002_team_and_real_ingestion.sql`, not yet written) needs to: create `Team`; add `Player.team_code` (FK → `Team.code`); drop `Player.nfl_team` and `Player.bye_week`; add the `(name, position)` uniqueness constraint on `Player`. This is a real schema migration, not a data-only refresh — flagged so it isn't mistaken for the latter when implementation starts.
+This round's schema change is implemented across two migrations, both real schema migrations rather than data-only refreshes. `server/migrations/002_team_and_real_ingestion.sql` creates `Team`; adds `Player.team_code` (FK → `Team.code`, nullable at this stage — schema-only, no backfill); drops `Player.nfl_team` and `Player.bye_week`; and adds the `(name, position)` uniqueness constraint on `Player`. `server/migrations/003_team_code_not_null.sql` then tightens `Player.team_code` to `NOT NULL`, once `server/seed/seed.ts` or `server/ingestion/run.ts` has populated it on every row (both always write `team_code` on every player they touch, so this precondition holds after any normal seed/ingest run).
 
 ## Resolved this round
 
@@ -174,4 +182,3 @@ This round's schema change (`server/migrations/002_team_and_real_ingestion.sql`,
 ## Still open
 
 - **Stale/dropped players**: no "inactive" concept exists yet. A player absent from a future ingestion run currently just goes unrefreshed rather than being flagged or hidden. Options (add an `active: boolean` to `Player` and filter, vs. leave as-is) not yet decided.
-- Migration file for this round's schema change (see "Migration note" above) not yet written.

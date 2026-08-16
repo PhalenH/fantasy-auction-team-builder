@@ -163,7 +163,7 @@ function PlayerList({
         }`}
         style={matchHeight === undefined ? { maxHeight: PLAYER_LIST_MAX_HEIGHT } : undefined}
       >
-        <table className="w-full min-w-[640px] table-fixed border-collapse">
+        <table className="w-full min-w-160 table-fixed border-collapse">
           <thead>
             <tr className="text-left text-xs font-semibold uppercase text-slate-500">
               <th className="sticky top-0 z-10 w-[36%] border-b border-slate-200 bg-parchment py-2 pr-2">Player</th>
