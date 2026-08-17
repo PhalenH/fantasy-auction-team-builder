@@ -8,11 +8,32 @@
 // away entirely when real ESPN/Yahoo ingestion replaces the mock layer,
 // writing into these same tables (docs/datamodel.md, "Swap-in path").
 //
-// Rerunnable: truncates and reinserts inside a single transaction. That is
-// safe precisely because of CLAUDE.md's Session Isolation rule — no
+// Split into two composable pieces:
+//   - seedLookupsAndConfig(): position/valuation_source/league_format/
+//     roster_position_slot/roster_slot_eligible_position. No player or
+//     player_valuation statements — this is server-authoritative reference
+//     data the app can't run without, independent of which player-data path
+//     (this file's mock players vs. server/ingestion/'s real upserts)
+//     populates the player-facing tables. Never truncates: only
+//     ON CONFLICT-guarded inserts on each table's natural key, so it's safe
+//     to run standalone (server/seed/seedConfig.ts, npm run db:seed:config)
+//     against a database that already has real ingested player data sitting
+//     on top of these tables, and safely re-runnable later (e.g. a new
+//     format added to leagueFormats.ts) rather than a run-exactly-once step.
+//   - seedMockPlayers(): team/player/player_valuation from mockPlayers.ts.
+//     Unchanged truncate-and-reinsert dev-fallback logic.
+// npm run db:seed (this file's own run() below) still calls both, in the
+// same order, inside one transaction — identical end state to before the
+// split. It also truncates the config tables itself first (a step neither
+// piece owns alone) so a full db:seed still resets everything on every run,
+// exactly as it always has.
+//
+// Safe to truncate-and-reinsert at all (both here and in the mock-only
+// piece) precisely because of CLAUDE.md's Session Isolation rule — no
 // user-owned or session state is stored server-side, so every row in these
-// tables is wholly derived from the files above and fully disposable. Real
-// ingestion will upsert on espn_player_id/yahoo_player_id instead.
+// tables is wholly derived from the files above and fully disposable.
+
+import { fileURLToPath } from 'node:url'
 
 import type { PoolClient } from 'pg'
 
@@ -22,11 +43,13 @@ import { pool } from '../db/pool'
 import { positions, teams, valuationSources } from './lookups'
 
 // Child-before-parent order; CASCADE covers the FKs either way, but being
-// explicit keeps the intent readable.
-const DATA_TABLES = [
-  'player_valuation',
-  'player',
-  'team',
+// explicit keeps the intent readable. Truncating `position` alone would
+// already cascade into `player`/`player_valuation` via their FKs even
+// without team/player/player_valuation listed here — seedMockPlayers'
+// own truncate below is what actually owns repopulating those, this list
+// only needs to cover the config tables seedLookupsAndConfig doesn't
+// truncate itself.
+const CONFIG_TABLES = [
   'roster_slot_eligible_position',
   'roster_position_slot',
   'league_format',
@@ -34,27 +57,11 @@ const DATA_TABLES = [
   'position',
 ]
 
-// Fail with a pointed message rather than a raw FK violation when the mock
-// data references something the lookup tables don't define.
-function validate(): void {
+// Fail with a pointed message rather than a raw FK/lookup mismatch when
+// leagueFormats.ts references a position lookups.ts doesn't define.
+function validateLookupsAndConfig(): void {
   const positionCodes = new Set<string>(positions.map((position) => position.code))
-  const sourceCodes = new Set<string>(valuationSources.map((source) => source.code))
-  const teamCodes = new Set<string>(teams.map((team) => team.code))
   const formatIds = new Set(leagueFormats.map((format) => format.id))
-  const playerIds = new Set(players.map((player) => player.id))
-
-  for (const player of players) {
-    if (!positionCodes.has(player.position)) {
-      throw new Error(
-        `Player "${player.name}" has position "${player.position}", which is not defined in seed/lookups.ts.`,
-      )
-    }
-    if (!teamCodes.has(player.teamCode)) {
-      throw new Error(
-        `Player "${player.name}" has team "${player.teamCode}", which is not defined in seed/lookups.ts.`,
-      )
-    }
-  }
 
   for (const slot of rosterPositionSlots) {
     if (!formatIds.has(slot.leagueFormatId)) {
@@ -70,6 +77,27 @@ function validate(): void {
       }
     }
   }
+}
+
+// Same idea, scoped to what seedMockPlayers actually inserts.
+function validateMockPlayers(): void {
+  const positionCodes = new Set<string>(positions.map((position) => position.code))
+  const sourceCodes = new Set<string>(valuationSources.map((source) => source.code))
+  const teamCodes = new Set<string>(teams.map((team) => team.code))
+  const playerIds = new Set(players.map((player) => player.id))
+
+  for (const player of players) {
+    if (!positionCodes.has(player.position)) {
+      throw new Error(
+        `Player "${player.name}" has position "${player.position}", which is not defined in seed/lookups.ts.`,
+      )
+    }
+    if (!teamCodes.has(player.teamCode)) {
+      throw new Error(
+        `Player "${player.name}" has team "${player.teamCode}", which is not defined in seed/lookups.ts.`,
+      )
+    }
+  }
 
   for (const valuation of playerValuations) {
     if (!playerIds.has(valuation.playerId)) {
@@ -83,39 +111,44 @@ function validate(): void {
   }
 }
 
-async function seed(client: PoolClient): Promise<Record<string, number>> {
-  await client.query(`TRUNCATE TABLE ${DATA_TABLES.join(', ')} RESTART IDENTITY CASCADE`)
+// Reference/config tables only. See the file header for why this never
+// truncates: ON CONFLICT on each table's natural key makes it a pure
+// upsert, safe to call standalone and safe to rerun.
+export async function seedLookupsAndConfig(client: PoolClient): Promise<Record<string, number>> {
+  validateLookupsAndConfig()
 
   for (const position of positions) {
-    await client.query('INSERT INTO position (code, display_name) VALUES ($1, $2)', [
+    await client.query('INSERT INTO position (code, display_name) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING', [
       position.code,
       position.displayName,
     ])
   }
 
   for (const source of valuationSources) {
-    await client.query('INSERT INTO valuation_source (code, display_name) VALUES ($1, $2)', [
-      source.code,
-      source.displayName,
-    ])
+    await client.query(
+      'INSERT INTO valuation_source (code, display_name) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING',
+      [source.code, source.displayName],
+    )
   }
 
-  for (const team of teams) {
-    await client.query('INSERT INTO team (code, display_name, bye_week) VALUES ($1, $2, $3)', [
-      team.code,
-      team.displayName,
-      team.byeWeek,
-    ])
-  }
-
-  // The mock files' string ids ('regular', 'p1') are only a local join key —
-  // these maps translate them to the database's generated ids.
+  // DO UPDATE (not DO NOTHING) here and on roster_position_slot below,
+  // specifically because the generated `id` is needed afterward to wire up
+  // league_format_id/roster_position_slot_id on their children — ON
+  // CONFLICT DO NOTHING returns no row at all when the conflict fires,
+  // which would leave nothing to wire up on a rerun. DO UPDATE always
+  // returns the row via RETURNING, whether it just inserted or already
+  // existed, and keeps display_name in sync with the source as a bonus.
   const formatIdByKey = new Map<string, number>()
   for (const format of leagueFormats) {
     const { rows } = await client.query<{ id: number }>(
-      'INSERT INTO league_format (key, display_name) VALUES ($1, $2) RETURNING id',
+      `INSERT INTO league_format (key, display_name)
+       VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET display_name = EXCLUDED.display_name
+       RETURNING id`,
       [format.key, format.displayName],
     )
+    // The mock files' string ids ('regular') are only a local join key —
+    // this map translates them to the database's generated ids.
     formatIdByKey.set(format.id, rows[0].id)
   }
 
@@ -124,17 +157,48 @@ async function seed(client: PoolClient): Promise<Record<string, number>> {
     const { rows } = await client.query<{ id: number }>(
       `INSERT INTO roster_position_slot (league_format_id, slot_label, count, sort_order, toggle_key)
        VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (league_format_id, slot_label) DO UPDATE SET
+         count = EXCLUDED.count, sort_order = EXCLUDED.sort_order, toggle_key = EXCLUDED.toggle_key
        RETURNING id`,
       [formatIdByKey.get(slot.leagueFormatId), slot.slotLabel, slot.count, slot.sortOrder, slot.toggleKey],
     )
 
     for (const code of slot.eligiblePositions) {
       await client.query(
-        'INSERT INTO roster_slot_eligible_position (roster_position_slot_id, position_code) VALUES ($1, $2)',
+        `INSERT INTO roster_slot_eligible_position (roster_position_slot_id, position_code)
+         VALUES ($1, $2)
+         ON CONFLICT (roster_position_slot_id, position_code) DO NOTHING`,
         [rows[0].id, code],
       )
       eligibleRowCount += 1
     }
+  }
+
+  return {
+    position: positions.length,
+    valuation_source: valuationSources.length,
+    league_format: leagueFormats.length,
+    roster_position_slot: rosterPositionSlots.length,
+    roster_slot_eligible_position: eligibleRowCount,
+  }
+}
+
+// Mock player data only: team (needed for player.team_code), player, and
+// player_valuation, from src/data/mockPlayers.ts. Truncate-and-reinsert,
+// unchanged from before the split — real ingestion (server/ingestion/
+// run.ts) upserts team itself too, so this duplicate insert is fine, both
+// paths converge on the same table.
+export async function seedMockPlayers(client: PoolClient): Promise<Record<string, number>> {
+  validateMockPlayers()
+
+  await client.query('TRUNCATE TABLE player_valuation, player, team RESTART IDENTITY CASCADE')
+
+  for (const team of teams) {
+    await client.query('INSERT INTO team (code, display_name, bye_week) VALUES ($1, $2, $3)', [
+      team.code,
+      team.displayName,
+      team.byeWeek,
+    ])
   }
 
   const playerIdByKey = new Map<string, number>()
@@ -169,24 +233,30 @@ async function seed(client: PoolClient): Promise<Record<string, number>> {
     )
   }
 
-  // Returned rather than printed here: reporting happens after COMMIT, so
-  // the summary always describes committed state (and a failure to write to
-  // stdout can never roll back an otherwise-good seed).
   return {
-    position: positions.length,
-    valuation_source: valuationSources.length,
     team: teams.length,
-    league_format: leagueFormats.length,
-    roster_position_slot: rosterPositionSlots.length,
-    roster_slot_eligible_position: eligibleRowCount,
     player: players.length,
     player_valuation: playerValuations.length,
   }
 }
 
-async function run(): Promise<void> {
-  validate()
+async function seed(client: PoolClient): Promise<Record<string, number>> {
+  // Owned here, not by either piece above: a full db:seed still resets the
+  // config tables on every run, exactly as before the split.
+  // seedLookupsAndConfig's ON CONFLICT clauses are no-ops on a table that's
+  // already empty, so this reproduces the pre-split behavior exactly.
+  await client.query(`TRUNCATE TABLE ${CONFIG_TABLES.join(', ')} RESTART IDENTITY CASCADE`)
 
+  const configCounts = await seedLookupsAndConfig(client)
+  const mockCounts = await seedMockPlayers(client)
+
+  // Returned rather than printed here: reporting happens after COMMIT, so
+  // the summary always describes committed state (and a failure to write to
+  // stdout can never roll back an otherwise-good seed).
+  return { ...configCounts, ...mockCounts }
+}
+
+async function run(): Promise<void> {
   const client = await pool.connect()
   let counts: Record<string, number>
   try {
@@ -210,7 +280,13 @@ async function run(): Promise<void> {
   }
 }
 
-run().catch((error: unknown) => {
-  console.error(`Seed failed (no changes committed): ${(error as Error).message}`)
-  process.exitCode = 1
-})
+// Guarded so importing seedLookupsAndConfig/seedMockPlayers from elsewhere
+// (server/seed/seedConfig.ts) never triggers this full seed as a side
+// effect of the import — only fires when this file is the actual entry
+// point (node ... server/seed/seed.ts), not when it's merely imported.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  run().catch((error: unknown) => {
+    console.error(`Seed failed (no changes committed): ${(error as Error).message}`)
+    process.exitCode = 1
+  })
+}
