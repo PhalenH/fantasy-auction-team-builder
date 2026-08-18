@@ -33,6 +33,8 @@
 // user-owned or session state is stored server-side, so every row in these
 // tables is wholly derived from the files above and fully disposable.
 
+import '../loadEnv'
+
 import { fileURLToPath } from 'node:url'
 
 import type { PoolClient } from 'pg'

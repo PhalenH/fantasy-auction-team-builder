@@ -7,6 +7,8 @@
 // from a migration tool, hence no dependency (CLAUDE.md: do not introduce
 // unnecessary dependencies).
 
+import '../loadEnv'
+
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

@@ -10,12 +10,14 @@
 // (name, position) match key (see normalize.ts) since the source has no
 // stable ID; PlayerValuation upserts on (player_id, source, season_year).
 //
-// Usage: node --env-file=.env --import tsx server/ingestion/run.ts <auction-values-csv> [bye-weeks-csv]
+// Usage: node --import tsx server/ingestion/run.ts <auction-values-csv> [bye-weeks-csv]
 //
 // The auction-value CSV path has no default — it's a dated, gitignored
 // weekly drop (server/ingestion/data/NFL_Auction_Values_*.csv), so there is
 // no single "current" file to assume. The bye-week CSV changes roughly once
 // a season and is committed, so it defaults to data/Bye_Weeks.csv.
+
+import '../loadEnv'
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

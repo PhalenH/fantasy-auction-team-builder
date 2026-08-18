@@ -16,7 +16,9 @@
 // script is the narrow alternative: reference/config data only, nothing
 // player-shaped.
 //
-// Usage: node --env-file=.env --import tsx server/seed/seedConfig.ts
+// Usage: node --import tsx server/seed/seedConfig.ts
+
+import '../loadEnv'
 
 import { pool } from '../db/pool'
 import { seedLookupsAndConfig } from './seed'
