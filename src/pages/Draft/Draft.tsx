@@ -188,20 +188,20 @@ function Draft({
   return (
     <div className="min-h-screen w-full bg-page-dark spotlight-sweep animate-spotlight-sweep motion-reduce:animate-none p-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">Draft</h1>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <h1 className="text-xl font-bold text-white sm:text-2xl">Draft</h1>
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={onGoToSetup}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400"
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:border-slate-400 sm:px-3 sm:py-1.5 sm:text-sm"
             >
               Draft Setup
             </button>
             <button
               type="button"
               onClick={onViewSavedRosters}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400"
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:border-slate-400 sm:px-3 sm:py-1.5 sm:text-sm"
             >
               Saved Rosters
             </button>
@@ -210,7 +210,7 @@ function Draft({
               onClick={handleSaveClick}
               disabled={!isComplete}
               aria-label="Save roster"
-              className="rounded-md bg-accent-green px-3 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-md bg-accent-green px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 sm:py-1.5 sm:text-sm"
             >
               Save
             </button>

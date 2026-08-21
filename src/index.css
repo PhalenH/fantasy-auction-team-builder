@@ -72,6 +72,31 @@
 }
 
 /*
+ * "Set Up Your Draft" card's static accent glow (src/pages/Setup/Setup.tsx)
+ * only — always-on, not a hover state, and not a shared card/button base
+ * class other screens could inherit. A plain CSS class rather than a
+ * shadow-[...] arbitrary Tailwind utility for the same readability reason
+ * .spotlight-sweep above is one: three comma-separated rgba() layers are
+ * unreadable jammed into a className.
+ *
+ * Color is deliberately NOT --color-accent-green's own rgb(27, 107, 69) —
+ * that's the same dark/deep green used for the solid button fills, which
+ * looked correct in isolation but was nearly invisible once actually
+ * screenshotted against this page's near-black background: a low-luminance
+ * color diffused into a blur just gets absorbed rather than standing out.
+ * rgb(74, 222, 128) is a brighter, more saturated green in the same hue
+ * family — chosen specifically for glow visibility, not for matching the
+ * buttons' exact shade — confirmed visible via an actual rendered
+ * screenshot, not just code review.
+ */
+.setup-card-glow {
+  box-shadow:
+    0 0 20px rgba(74, 222, 128, 0.55),
+    0 0 45px rgba(74, 222, 128, 0.3),
+    0 0 75px rgba(74, 222, 128, 0.15);
+}
+
+/*
  * Defensive baseline: nothing upstream should be constraining #root's
  * width (no other stylesheet touches it), but making that explicit here
  * removes any doubt when diagnosing page-level centering.

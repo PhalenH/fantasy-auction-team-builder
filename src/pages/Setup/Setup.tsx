@@ -116,7 +116,7 @@ function Setup({
       <NewsTicker />
 
       <div className="flex flex-1 items-center justify-center p-6">
-        <div className="w-full max-w-xl space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="setup-card-glow w-full max-w-xl space-y-6 rounded-lg border border-slate-200 bg-white p-6">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-slate-900">Set Up Your Draft</h1>
             <button
